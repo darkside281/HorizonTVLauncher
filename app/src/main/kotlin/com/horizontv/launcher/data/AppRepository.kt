@@ -15,6 +15,9 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.media.tv.TvContract
+import android.media.tv.TvInputInfo
+import android.media.tv.TvInputManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -27,6 +30,7 @@ import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.NetworkType
 import com.horizontv.launcher.model.StreamingOffer
+import com.horizontv.launcher.model.TvInputSource
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +61,8 @@ interface InstalledAppsDataSource {
   fun getInstalledSearchProviders(): List<ExternalSearchProvider>
   fun openExternalProviderSearch(provider: ExternalSearchProvider, query: String): Boolean
   fun openStreamingOffer(offer: StreamingOffer): Boolean
+  fun loadTvInputs(): List<TvInputSource> = emptyList()
+  fun openTvInput(input: TvInputSource): Boolean = false
 }
 
 class AppRepository(private val context: Context) : InstalledAppsDataSource {
@@ -537,6 +543,75 @@ class AppRepository(private val context: Context) : InstalledAppsDataSource {
       else -> emptyList()
     }
     return candidates.firstOrNull { isPackageInstalled(it) }
+  }
+
+  override fun loadTvInputs(): List<TvInputSource> {
+    val manager = runCatching {
+      context.getSystemService(Context.TV_INPUT_SERVICE) as? TvInputManager
+    }.getOrNull() ?: return emptyList()
+
+    val rawList = runCatching { manager.tvInputList }.getOrNull().orEmpty()
+    return rawList.mapNotNull { info ->
+      val hidden = runCatching { info.isHidden(context) }.getOrDefault(false)
+      if (hidden) return@mapNotNull null
+
+      val isPassthrough = info.isPassthroughInput
+      val type = info.type
+      // Show hardware HDMI/AV/Component/Composite/VGA/DisplayPort/DVI/SCART passthrough inputs & hardware tuners
+      val isHardwareType = type == TvInputInfo.TYPE_HDMI ||
+        type == TvInputInfo.TYPE_COMPONENT ||
+        type == TvInputInfo.TYPE_COMPOSITE ||
+        type == TvInputInfo.TYPE_DISPLAY_PORT ||
+        type == TvInputInfo.TYPE_DVI ||
+        type == TvInputInfo.TYPE_VGA ||
+        type == TvInputInfo.TYPE_SCART ||
+        type == TvInputInfo.TYPE_SVIDEO ||
+        isPassthrough
+      if (!isHardwareType) return@mapNotNull null
+
+      val customLabel = runCatching { info.loadCustomLabel(context)?.toString()?.trim() }.getOrNull()
+      val defaultLabel = runCatching { info.loadLabel(context)?.toString()?.trim() }.getOrNull()
+      val label = customLabel?.ifEmpty { null }
+        ?: defaultLabel?.ifEmpty { null }
+        ?: return@mapNotNull null
+
+      val (typeLabel, order) = when (type) {
+        TvInputInfo.TYPE_HDMI -> "HDMI" to 0
+        TvInputInfo.TYPE_TUNER -> "Tuner" to 1
+        TvInputInfo.TYPE_DISPLAY_PORT -> "DisplayPort" to 2
+        TvInputInfo.TYPE_COMPONENT -> "Component" to 3
+        TvInputInfo.TYPE_COMPOSITE -> "AV / Composite" to 4
+        TvInputInfo.TYPE_VGA -> "VGA" to 5
+        TvInputInfo.TYPE_DVI -> "DVI" to 6
+        TvInputInfo.TYPE_SCART -> "SCART" to 7
+        TvInputInfo.TYPE_SVIDEO -> "S-Video" to 8
+        else -> "Input" to 9
+      }
+
+      val state = runCatching { manager.getInputState(info.id) }.getOrDefault(TvInputManager.INPUT_STATE_DISCONNECTED)
+      val connected = state == TvInputManager.INPUT_STATE_CONNECTED
+
+      TvInputSource(
+        id = info.id,
+        label = label,
+        typeLabel = typeLabel,
+        isPassthrough = isPassthrough,
+        isConnected = connected,
+        sortOrder = order,
+      )
+    }.sortedWith(compareBy<TvInputSource> { it.sortOrder }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.label })
+  }
+
+  override fun openTvInput(input: TvInputSource): Boolean {
+    val primaryUri = if (input.isPassthrough) {
+      TvContract.buildChannelUriForPassthroughInput(input.id)
+    } else {
+      TvContract.buildChannelsUriForInput(input.id)
+    }
+    if (startActivitySafe(Intent(Intent.ACTION_VIEW, primaryUri))) return true
+    val fallbackUri = TvContract.buildChannelsUriForInput(input.id)
+    if (fallbackUri != primaryUri && startActivitySafe(Intent(Intent.ACTION_VIEW, fallbackUri))) return true
+    return false
   }
 
   private fun isPackageInstalled(packageName: String): Boolean {

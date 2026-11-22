@@ -83,6 +83,7 @@ import com.horizontv.launcher.model.ResolvedAppRow
 import com.horizontv.launcher.model.ScreensaverMode
 import com.horizontv.launcher.model.SearchProviderFilter
 import com.horizontv.launcher.model.StreamingOffer
+import com.horizontv.launcher.model.TvInputSource
 import com.horizontv.launcher.model.WeatherForecastSize
 import com.horizontv.launcher.model.WeatherIconStyle
 import com.horizontv.launcher.model.WeatherLocation
@@ -99,6 +100,7 @@ import com.horizontv.launcher.ui.components.RenameTextDialog
 import com.horizontv.launcher.ui.components.ScreensaverOverlay
 import com.horizontv.launcher.ui.components.SettingsOverlay
 import com.horizontv.launcher.ui.components.TileOrderDialog
+import com.horizontv.launcher.ui.components.TvInputsDialog
 import com.horizontv.launcher.ui.components.UniversalSearchDialog
 import com.horizontv.launcher.ui.components.WeatherSetupDialog
 import com.horizontv.launcher.ui.theme.LauncherPalettes
@@ -199,6 +201,10 @@ fun LauncherScreen(
   onToggleShowAllAppsSection: () -> Unit,
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTileTitles: () -> Unit,
+  onToggleShowTvInputsButton: () -> Unit = {},
+  onOpenTvInputs: () -> Unit = {},
+  onCloseTvInputs: () -> Unit = {},
+  onSelectTvInput: (TvInputSource) -> Unit = {},
   onToggleLockHomeLayout: () -> Unit,
   onSetHomeTileSize: (String) -> Unit,
   onToggleShowClock: () -> Unit,
@@ -515,6 +521,7 @@ fun LauncherScreen(
               use24HourClock = state.settings.use24HourClock,
               showSearchButton = state.settings.showSearchBar,
               isSearchActive = state.isSearchVisible,
+              showTvInputsButton = state.settings.showTvInputsButton && state.tvInputs.isNotEmpty(),
               weatherData = state.weatherData,
               weatherEnabled = state.settings.weatherEnabled,
               weatherDays = state.settings.weatherDays,
@@ -523,6 +530,7 @@ fun LauncherScreen(
               weatherIconStyle = WeatherIconStyle.fromId(state.settings.weatherIconStyle),
               weatherShowBackdrop = state.settings.weatherShowBackdrop,
               onToggleSearch = onToggleSearch,
+              onOpenTvInputs = onOpenTvInputs,
               onOpenCustomize = onOpenSettings,
               onOpenSystemSettings = onOpenSystemSettings,
               topBarFocusRequester = topBarFocusRequester,
@@ -1163,6 +1171,8 @@ fun LauncherScreen(
         onToggleShowAllAppsSection = onToggleShowAllAppsSection,
         onToggleShowAddAppTile = onToggleShowAddAppTile,
         onToggleShowTileTitles = onToggleShowTileTitles,
+        onToggleShowTvInputsButton = onToggleShowTvInputsButton,
+        tvInputsCount = state.tvInputs.size,
         onToggleLockHomeLayout = onToggleLockHomeLayout,
         onSetHomeTileSize = onSetHomeTileSize,
         onToggleShowClock = onToggleShowClock,
@@ -1199,6 +1209,15 @@ fun LauncherScreen(
         updateStatusText = state.updateStatusText,
         onCheckForUpdates = onCheckForUpdates,
         onOpenUpdateDialog = onOpenUpdateDialog,
+      )
+    }
+
+    if (state.isTvInputsDialogOpen) {
+      TvInputsDialog(
+        inputs = state.tvInputs,
+        accent = accent,
+        onSelectInput = onSelectTvInput,
+        onDismiss = onCloseTvInputs,
       )
     }
 

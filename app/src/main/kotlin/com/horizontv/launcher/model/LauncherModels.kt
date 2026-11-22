@@ -480,6 +480,7 @@ data class LauncherSettings(
   val showAllAppsSection: Boolean = true,
   val showAddAppTile: Boolean = true,
   val showTileTitles: Boolean = true,
+  val showTvInputsButton: Boolean = true,
   val lockHomeLayout: Boolean = false,
   val homeTileSize: String = HomeTileSize.MEDIUM.id,
   val disabledSearchProviders: Set<String> = emptySet(),
@@ -651,6 +652,15 @@ data class LauncherSettings(
   }
 }
 
+data class TvInputSource(
+  val id: String,
+  val label: String,
+  val typeLabel: String,
+  val isPassthrough: Boolean,
+  val isConnected: Boolean,
+  val sortOrder: Int = 0,
+)
+
 data class AppUpdateInfo(
   val versionName: String,
   val tagName: String,
@@ -704,6 +714,8 @@ data class LauncherUiState(
   val isScreensaverActive: Boolean = false,
   val screensaverPhotoSlide: ScreensaverPhotoSlide? = null,
   val screensaverPhotoCount: Int = 0,
+  val tvInputs: List<TvInputSource> = emptyList(),
+  val isTvInputsDialogOpen: Boolean = false,
   val availableUpdate: AppUpdateInfo? = null,
   val showUpdateDialog: Boolean = false,
   val isCheckingForUpdate: Boolean = false,

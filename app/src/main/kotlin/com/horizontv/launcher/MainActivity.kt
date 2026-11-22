@@ -229,6 +229,7 @@ class MainActivity : ComponentActivity() {
       BackHandler(enabled = true) {
         when {
           state.isScreensaverActive -> viewModel.stopScreensaver()
+          state.isTvInputsDialogOpen -> viewModel.closeTvInputsDialog()
           state.showUpdateDialog -> viewModel.dismissUpdateDialog()
           state.isWeatherDialogOpen -> viewModel.closeWeatherSetup()
           state.isAddingSubreddit -> viewModel.closeAddSubredditDialog()
@@ -347,6 +348,10 @@ class MainActivity : ComponentActivity() {
           onToggleShowAllAppsSection = viewModel::toggleShowAllAppsSection,
           onToggleShowAddAppTile = viewModel::toggleShowAddAppTile,
           onToggleShowTileTitles = viewModel::toggleShowTileTitles,
+          onToggleShowTvInputsButton = viewModel::toggleShowTvInputsButton,
+          onOpenTvInputs = viewModel::openTvInputsDialog,
+          onCloseTvInputs = viewModel::closeTvInputsDialog,
+          onSelectTvInput = viewModel::selectTvInput,
           onToggleLockHomeLayout = viewModel::toggleLockHomeLayout,
           onSetHomeTileSize = viewModel::setHomeTileSize,
           onToggleShowClock = viewModel::toggleShowClock,

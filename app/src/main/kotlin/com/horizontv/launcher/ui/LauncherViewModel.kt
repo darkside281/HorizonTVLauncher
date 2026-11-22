@@ -40,6 +40,7 @@ import com.horizontv.launcher.model.ReorderTarget
 import com.horizontv.launcher.model.ScreensaverMode
 import com.horizontv.launcher.model.SearchProviderFilter
 import com.horizontv.launcher.model.StreamingOffer
+import com.horizontv.launcher.model.TvInputSource
 import com.horizontv.launcher.model.WeatherForecastSize
 import com.horizontv.launcher.model.WeatherLocation
 import java.util.UUID
@@ -144,6 +145,7 @@ class LauncherViewModel(
       val loadedApps = appDataSource.loadInstalledApps(currentSettings.customIconPaths)
       val networkType = appDataSource.getNetworkType()
       val searchProviders = appDataSource.getInstalledSearchProviders()
+      val tvInputs = appDataSource.loadTvInputs()
 
       if (!currentSettings.hasInitializedFavorites && loadedApps.isNotEmpty()) {
         val preferredTv = loadedApps.filter { it.isTvApp }.take(6)
@@ -172,6 +174,7 @@ class LauncherViewModel(
           settings = currentSettings,
           networkType = networkType,
           externalSearchProviders = searchProviders,
+          tvInputs = tvInputs,
         )
       }
     }
@@ -1523,6 +1526,34 @@ class LauncherViewModel(
     val next = !_uiState.value.settings.showTileTitles
     updateSettings { it.copy(showTileTitles = next) }
     showStatus(if (next) "App titles shown under tiles" else "App titles hidden under tiles")
+  }
+
+  fun toggleShowTvInputsButton() {
+    val next = !_uiState.value.settings.showTvInputsButton
+    updateSettings { it.copy(showTvInputsButton = next) }
+    showStatus(if (next) "TV Inputs (HDMI) button enabled" else "TV Inputs (HDMI) button hidden")
+  }
+
+  fun openTvInputsDialog() {
+    val inputs = appDataSource.loadTvInputs()
+    _uiState.update {
+      it.copy(
+        tvInputs = inputs,
+        isTvInputsDialogOpen = true,
+        isSettingsOpen = false,
+      )
+    }
+  }
+
+  fun closeTvInputsDialog() {
+    _uiState.update { it.copy(isTvInputsDialogOpen = false) }
+  }
+
+  fun selectTvInput(input: TvInputSource) {
+    _uiState.update { it.copy(isTvInputsDialogOpen = false) }
+    if (!appDataSource.openTvInput(input)) {
+      showStatus("Unable to switch to ${input.label}")
+    }
   }
 
   fun toggleSearchProvider(providerId: String) {

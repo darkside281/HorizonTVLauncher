@@ -8,7 +8,7 @@
   A clean, fast, ad-free <strong>Android TV / Nvidia Shield home launcher</strong> built with Jetpack Compose — designed for living-room full-bleed artwork, crisp D-pad navigation, and universal streaming &amp; library search.
 </p>
 
-> **Latest Release:** Download [`HorizonTVLauncher-v2.5.17.apk`](https://github.com/darkside281/HorizonTVLauncher/releases/latest) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+> **Latest Release:** Download [`HorizonTVLauncher-v2.5.19.apk`](https://github.com/darkside281/HorizonTVLauncher/releases/latest) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 
 ---
 
@@ -41,6 +41,7 @@ Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shi
 ### Home Screen & App Organization
 - **Custom Home Rows**: Create, rename, reorder, delete, and lock custom app rows.
 - **Flexible Tiles**: Choose **Small / Medium / Large** tile sizes, toggle **App Titles Under Tiles** on/off for a clean artwork-only dock, rename apps, and assign custom PNG/JPG app icons.
+- **TV Inputs (HDMI) Switcher**: Automatically detects hardware HDMI, AV, Component, DisplayPort, and Tuner inputs on Android TV / Google TV smart TVs with an on-screen top-bar switcher (toggleable under **Customize → Home** and auto-hidden on streaming boxes without hardware inputs).
 - **All Apps Grid & Filtering**: Optional All Apps section with configurable 4–6 column layout, TV/Mobile app filtering, and app hiding/restoring.
 - **Resolution-Independent TV Layout**: Scales consistently across 720p, 1080p, and 4K TVs.
 
@@ -93,10 +94,10 @@ Horizon TV Launcher targets **Android 7.0+ (API 24)** up to **Android 16**, requ
 
 ## Installation
 
-1. Download the latest APK (`HorizonTVLauncher-v2.5.17.apk`) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+1. Download the latest APK (`HorizonTVLauncher-v2.5.19.apk`) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 2. Sideload it onto your Android TV / Google TV device (via USB, file manager, or ADB):
    ```bash
-   adb install -r HorizonTVLauncher-v2.5.17.apk
+   adb install -r HorizonTVLauncher-v2.5.19.apk
    ```
 3. Open **Horizon TV Launcher** → **Customize → Launcher & Apps → Set as Default Home**.
    - **Android TV (Nvidia Shield, Sony, etc.)** — optionally disable the stock launcher via ADB so the Home button always opens Horizon:

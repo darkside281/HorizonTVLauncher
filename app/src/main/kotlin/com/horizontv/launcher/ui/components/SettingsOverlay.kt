@@ -172,6 +172,8 @@ fun SettingsOverlay(
   onToggleShowAllAppsSection: () -> Unit,
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTileTitles: () -> Unit,
+  onToggleShowTvInputsButton: () -> Unit = {},
+  tvInputsCount: Int = 0,
   onToggleLockHomeLayout: () -> Unit,
   onSetHomeTileSize: (String) -> Unit,
   onToggleShowClock: () -> Unit,
@@ -512,6 +514,19 @@ fun SettingsOverlay(
                     checked = settings.showTileTitles,
                     accent = accent,
                     onClick = onToggleShowTileTitles,
+                    modifier = Modifier.focusProperties { left = activeTabRequester },
+                  )
+
+                  SettingsToggleRow(
+                    title = "Show TV Inputs (HDMI) Button",
+                    subtitle = when {
+                      !settings.showTvInputsButton -> "Hidden — TV Inputs button turned off"
+                      tvInputsCount > 0 -> "$tvInputsCount TV input(s) detected — HDMI switcher shown in top-right bar"
+                      else -> "Enabled — auto-hidden on streaming boxes with no hardware HDMI inputs"
+                    },
+                    checked = settings.showTvInputsButton,
+                    accent = accent,
+                    onClick = onToggleShowTvInputsButton,
                     modifier = Modifier.focusProperties { left = activeTabRequester },
                   )
 

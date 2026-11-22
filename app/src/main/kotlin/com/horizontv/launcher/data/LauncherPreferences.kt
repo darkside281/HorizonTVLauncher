@@ -66,6 +66,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("showAllAppsSection", settings.showAllAppsSection)
     root.put("showAddAppTile", settings.showAddAppTile)
     root.put("showTileTitles", settings.showTileTitles)
+    root.put("showTvInputsButton", settings.showTvInputsButton)
     root.put("lockHomeLayout", settings.lockHomeLayout)
     root.put("homeTileSize", settings.homeTileSize)
     val disabledSearchArr = JSONArray()
@@ -248,6 +249,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       showAllAppsSection = root.optBoolean("showAllAppsSection", existing.showAllAppsSection),
       showAddAppTile = root.optBoolean("showAddAppTile", existing.showAddAppTile),
       showTileTitles = root.optBoolean("showTileTitles", existing.showTileTitles),
+      showTvInputsButton = root.optBoolean("showTvInputsButton", existing.showTvInputsButton),
       lockHomeLayout = root.optBoolean("lockHomeLayout", existing.lockHomeLayout),
       homeTileSize = HomeTileSize.fromId(
         root.optString("homeTileSize", existing.homeTileSize),
@@ -504,6 +506,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       showAllAppsSection = prefs.getBoolean(KEY_SHOW_ALL_APPS, true),
       showAddAppTile = prefs.getBoolean(KEY_SHOW_ADD_APP_TILE, true),
       showTileTitles = prefs.getBoolean(KEY_SHOW_TILE_TITLES, true),
+      showTvInputsButton = prefs.getBoolean(KEY_SHOW_TV_INPUTS, true),
       lockHomeLayout = prefs.getBoolean(KEY_LOCK_HOME_LAYOUT, false),
       homeTileSize = HomeTileSize.fromId(
         prefs.getString(KEY_HOME_TILE_SIZE, HomeTileSize.MEDIUM.id),
@@ -590,6 +593,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putBoolean(KEY_SHOW_ALL_APPS, settings.showAllAppsSection)
       .putBoolean(KEY_SHOW_ADD_APP_TILE, settings.showAddAppTile)
       .putBoolean(KEY_SHOW_TILE_TITLES, settings.showTileTitles)
+      .putBoolean(KEY_SHOW_TV_INPUTS, settings.showTvInputsButton)
       .putBoolean(KEY_LOCK_HOME_LAYOUT, settings.lockHomeLayout)
       .putString(KEY_HOME_TILE_SIZE, settings.homeTileSize)
       .putStringSet(KEY_DISABLED_SEARCH_PROVIDERS, settings.disabledSearchProviders)
@@ -783,6 +787,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_SHOW_ALL_APPS = "show_all_apps_section"
     private const val KEY_SHOW_ADD_APP_TILE = "show_add_app_tile"
     private const val KEY_SHOW_TILE_TITLES = "show_tile_titles"
+    private const val KEY_SHOW_TV_INPUTS = "show_tv_inputs_button"
     private const val KEY_LOCK_HOME_LAYOUT = "lock_home_layout"
     private const val KEY_HOME_TILE_SIZE = "home_tile_size"
     private const val KEY_DISABLED_SEARCH_PROVIDERS = "disabled_search_providers"

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SettingsInputHdmi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -66,6 +67,7 @@ fun LauncherTopBar(
   use24HourClock: Boolean,
   showSearchButton: Boolean,
   isSearchActive: Boolean,
+  showTvInputsButton: Boolean = false,
   weatherData: WeatherData?,
   weatherEnabled: Boolean,
   weatherDays: Int,
@@ -74,6 +76,7 @@ fun LauncherTopBar(
   weatherIconStyle: WeatherIconStyle,
   weatherShowBackdrop: Boolean,
   onToggleSearch: () -> Unit,
+  onOpenTvInputs: () -> Unit = {},
   onOpenCustomize: () -> Unit,
   onOpenSystemSettings: () -> Unit,
   modifier: Modifier = Modifier,
@@ -205,6 +208,22 @@ fun LauncherTopBar(
             },
         )
       }
+      if (showTvInputsButton) {
+        QuickActionIcon(
+          icon = Icons.Rounded.SettingsInputHdmi,
+          contentDescription = "TV Inputs (HDMI)",
+          accent = accent,
+          onClick = onOpenTvInputs,
+          onFocused = onTopBarFocused,
+          modifier = Modifier
+            .then(if (!showSearchButton) Modifier.focusRequester(topBarFocusRequester) else Modifier)
+            .focusProperties {
+              up = FocusRequester.Cancel
+              if (!showSearchButton) left = FocusRequester.Cancel
+              if (downFocusRequester != null) down = downFocusRequester
+            },
+        )
+      }
       QuickActionIcon(
         icon = Icons.Rounded.Palette,
         contentDescription = "Customize Horizon",
@@ -212,10 +231,10 @@ fun LauncherTopBar(
         onClick = onOpenCustomize,
         onFocused = onTopBarFocused,
         modifier = Modifier
-          .then(if (!showSearchButton) Modifier.focusRequester(topBarFocusRequester) else Modifier)
+          .then(if (!showSearchButton && !showTvInputsButton) Modifier.focusRequester(topBarFocusRequester) else Modifier)
           .focusProperties {
             up = FocusRequester.Cancel
-            if (!showSearchButton) left = FocusRequester.Cancel
+            if (!showSearchButton && !showTvInputsButton) left = FocusRequester.Cancel
             if (downFocusRequester != null) down = downFocusRequester
           },
       )

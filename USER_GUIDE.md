@@ -1,6 +1,6 @@
 # Horizon TV Launcher — Complete User Guide & Feature Reference
 
-**Version:** `2.5.17`  
+**Version:** `2.5.19`  
 **Package ID:** `com.horizontv.launcher`  
 **Repository:** https://github.com/darkside281/HorizonTVLauncher  
 **Platform:** Android TV / Nvidia Shield / Waydroid (Android 7.0+ / API 24+)
@@ -57,6 +57,7 @@ Open **Customize → Home** to manage your rows:
 ### Tile Appearance & Per-App Customization
 - **Tile Size:** In **Customize → Home → Tiles**, choose **Small** (`172×98dp`), **Medium** (`216×122dp`), or **Large** (`264×148dp`).
 - **Show App Titles Under Tiles:** Toggle on or off under **Customize → Home → Tiles** to switch between titled tiles and clean artwork-only banners.
+- **Show TV Inputs (HDMI) Button:** Toggle on or off under **Customize → Home → Tiles**. On smart TVs that expose hardware inputs via Android TV's `TvInputManager`, an HDMI button appears in the top-right bar to switch between HDMI 1/2/3, Live TV, and AV inputs (auto-hidden on streaming boxes with no hardware inputs).
 - **Rename App:** Long-press **OK** → **Rename App** to give any app a custom label.
 - **Custom Icon / Banner:** Long-press **OK** → **Change Icon / Banner** to pick a custom PNG/JPG image from storage (and **Reset Default Icon** anytime to revert).
 - **Hide / Unhide Apps:** Long-press **OK** → **Hide App** to remove clutter. Restore hidden apps anytime under **Customize → Launcher & Apps → Hidden Apps**.
