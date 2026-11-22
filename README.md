@@ -95,3 +95,17 @@ cd HorizonTVLauncher
 ```
 
 The built APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
+
+---
+
+## Third-Party APIs, Attribution & Trademarks
+
+- **TMDB:** This product uses the TMDB API but is not endorsed or certified by TMDB. Users supply their own personal TMDB API key.
+- **Weather:** Weather and forecast data is provided by [Open-Meteo](https://open-meteo.com/).
+- **Media Servers & Feeds:** Jellyfin, Plex, Emby, and Reddit wallpapers are fetched directly from the user's own configured servers or public read-only feeds at runtime; no third-party media artwork is bundled with this application.
+- **Trademarks & Disclaimer:** Horizon TV Launcher is an independent, open-source project and is not affiliated with, endorsed by, or sponsored by Google, Android TV, Nvidia, Netflix, Amazon Prime Video, Disney+, Apple TV, Paramount+, Crunchyroll, ITVX, BBC, Channel 4, JustWatch, Jellyfin, Plex, Emby, TMDB, or Reddit. All product names, logos, and brands are the property of their respective owners.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
+
