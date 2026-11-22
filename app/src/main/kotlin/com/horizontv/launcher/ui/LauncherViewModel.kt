@@ -1,0 +1,1816 @@
+package com.horizontv.launcher.ui
+
+import android.net.Uri
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.horizontv.launcher.data.InstalledAppsDataSource
+import com.horizontv.launcher.data.JellyfinClient
+import com.horizontv.launcher.data.JellyfinDataSource
+import com.horizontv.launcher.data.JustWatchClient
+import com.horizontv.launcher.data.PhotoEntry
+import com.horizontv.launcher.data.PlexClient
+import com.horizontv.launcher.data.RedditWallpaperClient
+import com.horizontv.launcher.data.ScreensaverPhotoSource
+import com.horizontv.launcher.data.SettingsBackupCodec
+import com.horizontv.launcher.data.SettingsBackupSerializer
+import com.horizontv.launcher.data.SettingsStore
+import com.horizontv.launcher.data.StreamingSearchDataSource
+import com.horizontv.launcher.data.TmdbWallpaperClient
+import com.horizontv.launcher.data.WeatherClient
+import com.horizontv.launcher.data.WeatherDataSource
+import com.horizontv.launcher.model.AppFilter
+import com.horizontv.launcher.model.AppInfo
+import com.horizontv.launcher.model.AppMenuTarget
+import com.horizontv.launcher.model.AppRow
+import com.horizontv.launcher.model.ExternalSearchProvider
+import com.horizontv.launcher.model.HomeTileSize
+import com.horizontv.launcher.model.JellyfinBackdrop
+import com.horizontv.launcher.model.JellyfinLibrary
+import com.horizontv.launcher.model.JellyfinMediaType
+import com.horizontv.launcher.model.JellyfinSearchItem
+import com.horizontv.launcher.model.JellyfinSlide
+import com.horizontv.launcher.model.JustWatchServicePreset
+import com.horizontv.launcher.model.LauncherSettings
+import com.horizontv.launcher.model.LauncherUiState
+import com.horizontv.launcher.model.MediaWallpaperProvider
+import com.horizontv.launcher.model.RedditSort
+import com.horizontv.launcher.model.ReorderTarget
+import com.horizontv.launcher.model.ScreensaverMode
+import com.horizontv.launcher.model.SearchProviderFilter
+import com.horizontv.launcher.model.StreamingOffer
+import com.horizontv.launcher.model.WeatherForecastSize
+import com.horizontv.launcher.model.WeatherLocation
+import java.util.UUID
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+class LauncherViewModel(
+  private val appDataSource: InstalledAppsDataSource,
+  private val settingsStore: SettingsStore,
+  private val jellyfinDataSource: JellyfinDataSource = JellyfinClient(),
+  private val weatherDataSource: WeatherDataSource = WeatherClient(),
+  private val backupSerializer: SettingsBackupSerializer = SettingsBackupCodec,
+  private val plexDataSource: JellyfinDataSource = PlexClient(),
+  private val redditDataSource: JellyfinDataSource = RedditWallpaperClient(),
+  private val tmdbDataSource: JellyfinDataSource = TmdbWallpaperClient(),
+  private val streamingSearchDataSource: StreamingSearchDataSource = JustWatchClient(),
+  private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
+) : ViewModel() {
+
+  private val _uiState = MutableStateFlow(
+    LauncherUiState(
+      isLoading = true,
+      isDefaultHome = appDataSource.isDefaultHomeLauncher(),
+      settings = settingsStore.load(),
+      networkType = appDataSource.getNetworkType(),
+    ),
+  )
+  val uiState: StateFlow<LauncherUiState> = _uiState.asStateFlow()
+
+  private var statusJob: Job? = null
+  private var slideshowJob: Job? = null
+  private var weatherJob: Job? = null
+  private var jellyfinSearchJob: Job? = null
+  private var streamingSearchJob: Job? = null
+  private var screensaverPhotoJob: Job? = null
+  private var cachedBackdrops: List<JellyfinBackdrop> = emptyList()
+  private var currentBackdropIndex: Int = 0
+  private var cachedPhotoEntries: List<PhotoEntry> = emptyList()
+  private var currentPhotoIndex: Int = 0
+
+  private fun dataSourceFor(provider: MediaWallpaperProvider): JellyfinDataSource = when (provider) {
+    MediaWallpaperProvider.PLEX -> plexDataSource
+    MediaWallpaperProvider.TMDB -> tmdbDataSource
+    MediaWallpaperProvider.REDDIT -> redditDataSource
+    MediaWallpaperProvider.JELLYFIN, MediaWallpaperProvider.EMBY -> jellyfinDataSource
+  }
+
+  init {
+    refreshApps()
+    observePackageChanges()
+    observeNetworkRecovery()
+    if (_uiState.value.settings.jellyfinEnabled && _uiState.value.settings.isActiveWallpaperProviderConfigured) {
+      startJellyfinSlideshow(fetchFreshList = true)
+    }
+    if (_uiState.value.settings.weatherEnabled && _uiState.value.settings.isWeatherConfigured) {
+      startWeatherRefreshLoop()
+    }
+    refreshScreensaverPhotoCount()
+  }
+
+  private fun observeNetworkRecovery() {
+    viewModelScope.launch {
+      appDataSource.networkAvailable().collect {
+        val state = _uiState.value
+        val s = state.settings
+        if (s.weatherEnabled && s.isWeatherConfigured && state.weatherData == null && weatherJob?.isActive != true) {
+          startWeatherRefreshLoop()
+        }
+        if (s.jellyfinEnabled && s.isActiveWallpaperProviderConfigured && state.jellyfinSlide == null && slideshowJob?.isActive != true) {
+          startJellyfinSlideshow(fetchFreshList = cachedBackdrops.isEmpty())
+        }
+      }
+    }
+  }
+
+  private fun observePackageChanges() {
+    viewModelScope.launch {
+      appDataSource.packageChanges().collect {
+        refreshApps()
+      }
+    }
+  }
+
+  fun refreshApps() {
+    viewModelScope.launch {
+      var currentSettings = _uiState.value.settings
+      val loadedApps = appDataSource.loadInstalledApps(currentSettings.customIconPaths)
+      val networkType = appDataSource.getNetworkType()
+      val searchProviders = appDataSource.getInstalledSearchProviders()
+
+      if (!currentSettings.hasInitializedFavorites && loadedApps.isNotEmpty()) {
+        val preferredTv = loadedApps.filter { it.isTvApp }.take(6)
+        val initialFavorites = (preferredTv.ifEmpty { loadedApps.take(6) })
+          .map { it.packageName }
+        val existingRows = currentSettings.rows.ifEmpty {
+          listOf(AppRow(id = LauncherSettings.DEFAULT_FAVORITES_ROW_ID, title = "Favorites"))
+        }
+        val firstRow = existingRows.first()
+        val updatedRows = if (firstRow.packageNames.isEmpty()) {
+          listOf(firstRow.copy(packageNames = initialFavorites)) + existingRows.drop(1)
+        } else {
+          existingRows
+        }
+        currentSettings = currentSettings.copy(
+          rows = updatedRows,
+          hasInitializedFavorites = true,
+        )
+        settingsStore.save(currentSettings)
+      }
+
+      _uiState.update { state ->
+        state.copy(
+          isLoading = false,
+          allApps = loadedApps,
+          settings = currentSettings,
+          networkType = networkType,
+          externalSearchProviders = searchProviders,
+        )
+      }
+    }
+  }
+
+  fun refreshNetworkStatus() {
+    val state = _uiState.value
+    _uiState.update {
+      it.copy(
+        networkType = appDataSource.getNetworkType(),
+        isDefaultHome = appDataSource.isDefaultHomeLauncher(),
+      )
+    }
+    val s = state.settings
+    if (s.weatherEnabled && s.isWeatherConfigured && state.weatherData == null) {
+      startWeatherRefreshLoop()
+    }
+    if (s.jellyfinEnabled && s.isActiveWallpaperProviderConfigured && state.jellyfinSlide == null) {
+      startJellyfinSlideshow(fetchFreshList = cachedBackdrops.isEmpty())
+    }
+  }
+
+  fun onDefaultHomeResult() {
+    val nowDefault = appDataSource.isDefaultHomeLauncher()
+    _uiState.update { it.copy(isDefaultHome = nowDefault) }
+    if (nowDefault) {
+      showStatus("Horizon TV Launcher is now your Default Home app")
+    }
+  }
+
+  fun onAppFocused(app: AppInfo?) {
+    _uiState.update { it.copy(focusedApp = app) }
+  }
+
+  fun launchApp(app: AppInfo) {
+    if (!appDataSource.launchApp(app)) {
+      showStatus("Unable to launch ${app.label}")
+    }
+  }
+
+  fun openAppMenu(app: AppInfo, rowId: String? = null) {
+    _uiState.update {
+      it.copy(
+        menuTarget = AppMenuTarget(app = app, rowId = rowId),
+        reorderingTarget = null,
+      )
+    }
+  }
+
+  fun closeAppMenu() {
+    _uiState.update { it.copy(menuTarget = null) }
+  }
+
+  fun openRenameApp(app: AppInfo) {
+    _uiState.update {
+      it.copy(
+        menuTarget = null,
+        renamingApp = app,
+      )
+    }
+  }
+
+  fun closeRenameApp() {
+    _uiState.update { it.copy(renamingApp = null) }
+  }
+
+  fun renameApp(packageName: String, newName: String) {
+    val trimmed = newName.trim()
+    val original = _uiState.value.allApps.firstOrNull { it.packageName == packageName }?.originalLabel ?: "App"
+    updateSettings { settings ->
+      val updatedLabels = settings.customLabels.toMutableMap()
+      if (trimmed.isEmpty() || trimmed == original) {
+        updatedLabels.remove(packageName)
+        showStatus("Reset name to $original")
+      } else {
+        updatedLabels[packageName] = trimmed
+        showStatus("Renamed to $trimmed")
+      }
+      settings.copy(customLabels = updatedLabels)
+    }
+    _uiState.update { it.copy(renamingApp = null) }
+  }
+
+  // --- Row Management ---
+
+  private fun isLayoutLockedWithToast(): Boolean {
+    if (_uiState.value.settings.lockHomeLayout) {
+      showStatus("Home layout is locked — unlock in Customize → Home")
+      return true
+    }
+    return false
+  }
+
+  fun openCreateRowDialog() {
+    if (isLayoutLockedWithToast()) return
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        isCreatingRow = true,
+      )
+    }
+  }
+
+  fun closeCreateRowDialog() {
+    _uiState.update { it.copy(isCreatingRow = false) }
+  }
+
+  fun createRow(title: String, openAppPickerAfter: Boolean = true) {
+    val cleaned = title.trim().ifEmpty { "Row ${_uiState.value.settings.rows.size + 1}" }
+    val newId = "row_${UUID.randomUUID().toString().take(8)}"
+    updateSettings { settings ->
+      settings.copy(
+        rows = settings.rows + AppRow(id = newId, title = cleaned, packageNames = emptyList()),
+      )
+    }
+    _uiState.update {
+      it.copy(
+        isCreatingRow = false,
+        addingAppsToRowId = if (openAppPickerAfter) newId else null,
+      )
+    }
+    showStatus("Created row \"$cleaned\"")
+  }
+
+  fun openRenameRowDialog(rowId: String) {
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        renamingRowId = rowId,
+      )
+    }
+  }
+
+  fun closeRenameRowDialog() {
+    _uiState.update { it.copy(renamingRowId = null) }
+  }
+
+  fun renameRow(rowId: String, newTitle: String) {
+    val fallback = if (rowId == LauncherSettings.DEFAULT_FAVORITES_ROW_ID) "Favorites" else "Custom Row"
+    val cleaned = newTitle.trim().ifEmpty { fallback }
+    updateSettings { settings ->
+      settings.copy(
+        rows = settings.rows.map { row ->
+          if (row.id == rowId) row.copy(title = cleaned) else row
+        },
+      )
+    }
+    _uiState.update { it.copy(renamingRowId = null) }
+    showStatus("Row renamed to \"$cleaned\"")
+  }
+
+  fun moveRow(rowId: String, delta: Int) {
+    if (isLayoutLockedWithToast()) return
+    updateSettings { settings ->
+      val list = settings.rows.toMutableList()
+      val idx = list.indexOfFirst { it.id == rowId }
+      if (idx == -1) return@updateSettings settings
+      val target = (idx + delta).coerceIn(0, list.lastIndex)
+      if (target == idx) return@updateSettings settings
+      val item = list.removeAt(idx)
+      list.add(target, item)
+      settings.copy(rows = list)
+    }
+  }
+
+  fun deleteRow(rowId: String) {
+    if (isLayoutLockedWithToast()) return
+    val currentRows = _uiState.value.settings.rows
+    if (currentRows.size <= 1) {
+      showStatus("Keep at least one row on your home screen")
+      return
+    }
+    val removedTitle = currentRows.firstOrNull { it.id == rowId }?.title ?: "Row"
+    updateSettings { settings ->
+      settings.copy(rows = settings.rows.filterNot { it.id == rowId })
+    }
+    _uiState.update {
+      it.copy(
+        reorderingTarget = if (it.reorderingTarget?.rowId == rowId) null else it.reorderingTarget,
+        addingAppsToRowId = if (it.addingAppsToRowId == rowId) null else it.addingAppsToRowId,
+      )
+    }
+    showStatus("Deleted row \"$removedTitle\"")
+  }
+
+  fun openAddAppsToRow(rowId: String) {
+    if (isLayoutLockedWithToast()) return
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        addingAppsToRowId = rowId,
+        reorderingTarget = null,
+      )
+    }
+  }
+
+  fun closeAddAppsToRow() {
+    _uiState.update { it.copy(addingAppsToRowId = null) }
+  }
+
+  fun openTileOrderDialog(rowId: String) {
+    if (isLayoutLockedWithToast()) return
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        orderingRowId = rowId,
+        reorderingTarget = null,
+      )
+    }
+  }
+
+  fun closeTileOrderDialog() {
+    _uiState.update { it.copy(orderingRowId = null) }
+  }
+
+  fun sortRowAppsAlphabetically(rowId: String) {
+    if (isLayoutLockedWithToast()) return
+    val labelsByPkg = _uiState.value.allVisibleApps.associate { it.packageName to it.label }
+    val rowTitle = _uiState.value.settings.rows.firstOrNull { it.id == rowId }?.title ?: "Row"
+    updateSettings { settings ->
+      val updatedRows = settings.rows.map { row ->
+        if (row.id != rowId) {
+          row
+        } else {
+          val sorted = row.packageNames.sortedWith(
+            compareBy(String.CASE_INSENSITIVE_ORDER) { pkg -> labelsByPkg[pkg] ?: pkg },
+          )
+          row.copy(packageNames = sorted)
+        }
+      }
+      settings.copy(rows = updatedRows)
+    }
+    showStatus("Sorted $rowTitle A–Z")
+  }
+
+  fun toggleAppInRow(rowId: String, packageName: String) {
+    if (isLayoutLockedWithToast()) return
+    val appLabel = _uiState.value.allVisibleApps.firstOrNull { it.packageName == packageName }?.label ?: "App"
+    val rowTitle = _uiState.value.settings.rows.firstOrNull { it.id == rowId }?.title ?: "Row"
+    updateSettings { settings ->
+      val updatedRows = settings.rows.map { row ->
+        if (row.id != rowId) {
+          row
+        } else {
+          val updatedPkgs = if (packageName in row.packageNames) {
+            showStatus("Removed $appLabel from $rowTitle")
+            row.packageNames - packageName
+          } else {
+            showStatus("Added $appLabel to $rowTitle")
+            row.packageNames + packageName
+          }
+          row.copy(packageNames = updatedPkgs)
+        }
+      }
+      settings.copy(
+        rows = updatedRows,
+        hasInitializedFavorites = true,
+      )
+    }
+  }
+
+  fun moveAppInRow(rowId: String, packageName: String, delta: Int) {
+    if (isLayoutLockedWithToast()) return
+    updateSettings { settings ->
+      val updatedRows = settings.rows.map { row ->
+        if (row.id != rowId) {
+          row
+        } else {
+          val current = row.packageNames.toMutableList()
+          val index = current.indexOf(packageName)
+          if (index == -1) return@map row
+          val target = (index + delta).coerceIn(0, current.lastIndex)
+          if (target == index) return@map row
+          val item = current.removeAt(index)
+          current.add(target, item)
+          row.copy(packageNames = current)
+        }
+      }
+      settings.copy(rows = updatedRows)
+    }
+  }
+
+  fun startReordering(rowId: String, packageName: String) {
+    if (isLayoutLockedWithToast()) return
+    val row = _uiState.value.settings.rows.firstOrNull { it.id == rowId } ?: return
+    if (packageName !in row.packageNames) return
+    _uiState.update {
+      it.copy(
+        menuTarget = null,
+        reorderingTarget = ReorderTarget(rowId = rowId, packageName = packageName),
+      )
+    }
+  }
+
+  fun stopReordering() {
+    _uiState.update { it.copy(reorderingTarget = null) }
+  }
+
+  // --- Media Server Backdrop Slideshow (Jellyfin, Plex, Emby) ---
+
+  fun selectWallpaperProvider(provider: MediaWallpaperProvider) {
+    if (_uiState.value.settings.activeWallpaperProvider == provider) return
+    stopJellyfinSlideshow()
+    cachedBackdrops = emptyList()
+    currentBackdropIndex = 0
+    val isConfigured = _uiState.value.settings.isProviderConfigured(provider)
+    updateSettings { settings ->
+      settings.copy(
+        wallpaperProvider = provider.id,
+        jellyfinEnabled = isConfigured,
+        customWallpaperUri = if (isConfigured) null else settings.customWallpaperUri,
+      )
+    }
+    _uiState.update {
+      it.copy(
+        jellyfinSlide = null,
+        jellyfinBackdropCount = 0,
+        jellyfinLibraries = emptyList(),
+      )
+    }
+    if (isConfigured) {
+      startJellyfinSlideshow(fetchFreshList = true)
+      showStatus("Switched wallpaper provider to ${provider.label}")
+    } else {
+      showStatus("Selected ${provider.label} — connect your server to enable")
+    }
+  }
+
+  fun openJellyfinSetup(provider: MediaWallpaperProvider = _uiState.value.settings.activeWallpaperProvider) {
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        setupProviderDialog = provider,
+        jellyfinError = null,
+      )
+    }
+  }
+
+  fun closeJellyfinSetup() {
+    _uiState.update {
+      it.copy(
+        setupProviderDialog = null,
+        isTestingJellyfin = false,
+        jellyfinError = null,
+      )
+    }
+  }
+
+  fun connectJellyfin(
+    serverUrl: String,
+    apiKey: String?,
+    username: String?,
+    password: String?,
+    provider: MediaWallpaperProvider = _uiState.value.setupProviderDialog
+      ?: _uiState.value.settings.activeWallpaperProvider,
+  ) {
+    viewModelScope.launch {
+      _uiState.update { it.copy(isTestingJellyfin = true, jellyfinError = null) }
+      val cur = _uiState.value.settings
+      val providerCfg = cur.configFor(provider)
+      val client = dataSourceFor(provider)
+      val result = client.authenticateAndFetch(
+        rawServerUrl = serverUrl,
+        apiKey = apiKey,
+        username = username,
+        password = password,
+        mediaType = JellyfinMediaType.fromId(providerCfg.mediaType),
+        libraryIds = cur.libraryIdsFor(provider),
+        limit = providerCfg.backdropLimit,
+      )
+      result.fold(
+        onSuccess = { auth ->
+          cachedBackdrops = auth.backdrops
+          currentBackdropIndex = 0
+          updateSettings { settings ->
+            val base = settings.copy(
+              wallpaperProvider = provider.id,
+              jellyfinEnabled = true,
+              customWallpaperUri = null,
+            )
+            when (provider) {
+              MediaWallpaperProvider.JELLYFIN -> base.copy(
+                jellyfinServerUrl = auth.serverUrl,
+                jellyfinApiKey = auth.token,
+                jellyfinUserId = auth.userId,
+              )
+              MediaWallpaperProvider.PLEX -> base.copy(
+                plexServerUrl = auth.serverUrl,
+                plexToken = auth.token,
+              )
+              MediaWallpaperProvider.EMBY -> base.copy(
+                embyServerUrl = auth.serverUrl,
+                embyApiKey = auth.token,
+                embyUserId = auth.userId,
+              )
+              MediaWallpaperProvider.TMDB -> base.copy(
+                tmdbApiKey = auth.token,
+              )
+              MediaWallpaperProvider.REDDIT -> base
+            }
+          }
+          _uiState.update {
+            it.copy(
+              isTestingJellyfin = false,
+              setupProviderDialog = null,
+              jellyfinError = null,
+              jellyfinBackdropCount = cachedBackdrops.size,
+              jellyfinLibraries = auth.libraries,
+            )
+          }
+          showStatus("${provider.label} connected — ${cachedBackdrops.size} backdrops ready")
+          startJellyfinSlideshow(fetchFreshList = false)
+        },
+        onFailure = { err ->
+          val msg = err.message ?: "Could not connect to ${provider.label} server"
+          _uiState.update {
+            it.copy(
+              isTestingJellyfin = false,
+              jellyfinError = msg,
+            )
+          }
+        },
+      )
+    }
+  }
+
+  fun setJellyfinMediaType(typeId: String) {
+    val parsed = JellyfinMediaType.fromId(typeId)
+    val provider = _uiState.value.settings.activeWallpaperProvider
+    updateSettings {
+      it.withProviderConfig(provider) { cfg -> cfg.copy(mediaType = parsed.id) }
+    }
+    if (_uiState.value.settings.jellyfinEnabled) {
+      cachedBackdrops = emptyList()
+      startJellyfinSlideshow(fetchFreshList = true)
+      showStatus("${provider.label} filter: ${parsed.label}")
+    }
+  }
+
+  fun selectJellyfinLibrary(library: JellyfinLibrary?) {
+    val provider = _uiState.value.settings.activeWallpaperProvider
+    val currentIds = _uiState.value.settings.libraryIdsFor(provider)
+    val updatedIds = if (library == null) {
+      when (provider) {
+        MediaWallpaperProvider.REDDIT -> LauncherSettings.DEFAULT_REDDIT_SUBREDDITS
+        MediaWallpaperProvider.TMDB -> LauncherSettings.DEFAULT_TMDB_CATEGORIES
+        else -> emptySet()
+      }
+    } else {
+      val toggled = if (library.id in currentIds) currentIds - library.id else currentIds + library.id
+      when {
+        provider == MediaWallpaperProvider.REDDIT && toggled.isEmpty() -> LauncherSettings.DEFAULT_REDDIT_SUBREDDITS
+        provider == MediaWallpaperProvider.TMDB && toggled.isEmpty() -> LauncherSettings.DEFAULT_TMDB_CATEGORIES
+        else -> toggled
+      }
+    }
+    updateSettings { settings ->
+      when (provider) {
+        MediaWallpaperProvider.JELLYFIN -> settings.copy(jellyfinLibraryIds = updatedIds)
+        MediaWallpaperProvider.PLEX -> settings.copy(plexLibraryIds = updatedIds)
+        MediaWallpaperProvider.EMBY -> settings.copy(embyLibraryIds = updatedIds)
+        MediaWallpaperProvider.TMDB -> settings.copy(tmdbCategories = updatedIds)
+        MediaWallpaperProvider.REDDIT -> settings.copy(redditSubreddits = updatedIds)
+      }
+    }
+    if (_uiState.value.settings.jellyfinEnabled) {
+      cachedBackdrops = emptyList()
+      startJellyfinSlideshow(fetchFreshList = true)
+      val statusText = if (provider == MediaWallpaperProvider.REDDIT) {
+        "Reddit: ${updatedIds.joinToString(", ") { "r/$it" }}"
+      } else if (updatedIds.isEmpty()) {
+        "${provider.label}: All Libraries"
+      } else {
+        val names = _uiState.value.jellyfinLibraries
+          .filter { it.id in updatedIds }
+          .map { it.name }
+        if (names.isNotEmpty()) {
+          "${provider.label} libraries: ${names.joinToString(", ")}"
+        } else {
+          "${provider.label}: ${updatedIds.size} selected"
+        }
+      }
+      showStatus(statusText)
+    }
+  }
+
+  fun setRedditSort(sortId: String) {
+    val parsed = RedditSort.fromId(sortId)
+    updateSettings { it.copy(redditSort = parsed.id) }
+    val s = _uiState.value.settings
+    if (s.jellyfinEnabled && s.activeWallpaperProvider == MediaWallpaperProvider.REDDIT) {
+      cachedBackdrops = emptyList()
+      startJellyfinSlideshow(fetchFreshList = true)
+      showStatus("Reddit feed: ${parsed.label}")
+    }
+  }
+
+  fun openAddSubredditDialog() {
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        isAddingSubreddit = true,
+      )
+    }
+  }
+
+  fun closeAddSubredditDialog() {
+    _uiState.update { it.copy(isAddingSubreddit = false) }
+  }
+
+  fun addCustomSubreddit(rawSubreddit: String) {
+    val cleaned = RedditWallpaperClient.sanitizeSubreddit(rawSubreddit)
+    if (cleaned.length < 2) {
+      showStatus("Enter a valid subreddit name (e.g. EarthPorn)")
+      return
+    }
+    updateSettings { settings ->
+      settings.copy(
+        wallpaperProvider = MediaWallpaperProvider.REDDIT.id,
+        jellyfinEnabled = true,
+        customWallpaperUri = null,
+        redditCustomSubreddits = settings.redditCustomSubreddits + cleaned,
+        redditSubreddits = settings.redditSubreddits + cleaned,
+      )
+    }
+    _uiState.update { it.copy(isAddingSubreddit = false) }
+    cachedBackdrops = emptyList()
+    startJellyfinSlideshow(fetchFreshList = true)
+    showStatus("Added r/$cleaned to Reddit wallpapers")
+  }
+
+  fun setJellyfinBackdropLimit(limit: Int) {
+    val clamped = limit.coerceIn(10, 500)
+    val provider = _uiState.value.settings.activeWallpaperProvider
+    updateSettings {
+      it.withProviderConfig(provider) { cfg -> cfg.copy(backdropLimit = clamped) }
+    }
+    if (_uiState.value.settings.jellyfinEnabled) {
+      cachedBackdrops = emptyList()
+      startJellyfinSlideshow(fetchFreshList = true)
+      showStatus("Fetching up to $clamped ${provider.label} backdrops…")
+    }
+  }
+
+  fun toggleJellyfinSlideshow() {
+    val settings = _uiState.value.settings
+    val provider = settings.activeWallpaperProvider
+    if (!settings.isProviderConfigured(provider)) {
+      openJellyfinSetup(provider)
+      return
+    }
+    val nextEnabled = !settings.jellyfinEnabled
+    updateSettings {
+      it.copy(
+        jellyfinEnabled = nextEnabled,
+        customWallpaperUri = if (nextEnabled) null else it.customWallpaperUri,
+      )
+    }
+    if (nextEnabled) {
+      startJellyfinSlideshow(fetchFreshList = cachedBackdrops.isEmpty())
+      showStatus("${provider.label} slideshow enabled")
+    } else {
+      stopJellyfinSlideshow()
+      showStatus("${provider.label} slideshow paused")
+    }
+  }
+
+  fun setJellyfinInterval(seconds: Int) {
+    val clamped = seconds.coerceIn(10, 600)
+    val provider = _uiState.value.settings.activeWallpaperProvider
+    updateSettings {
+      it.withProviderConfig(provider) { cfg -> cfg.copy(intervalSeconds = clamped) }
+    }
+    if (_uiState.value.settings.jellyfinEnabled) {
+      startJellyfinSlideshow(fetchFreshList = false)
+    }
+  }
+
+  fun toggleJellyfinShowTitle() {
+    val provider = _uiState.value.settings.activeWallpaperProvider
+    updateSettings {
+      it.withProviderConfig(provider) { cfg -> cfg.copy(showTitle = !cfg.showTitle) }
+    }
+  }
+
+  fun nextJellyfinBackdrop() {
+    if (!_uiState.value.settings.jellyfinEnabled) return
+    if (cachedBackdrops.isEmpty()) {
+      startJellyfinSlideshow(fetchFreshList = true)
+      return
+    }
+    currentBackdropIndex = (currentBackdropIndex + 1) % cachedBackdrops.size
+    startJellyfinSlideshow(fetchFreshList = false)
+  }
+
+  fun disconnectJellyfin(
+    provider: MediaWallpaperProvider = _uiState.value.setupProviderDialog
+      ?: _uiState.value.settings.activeWallpaperProvider,
+  ) {
+    val isDisconnectingActive = _uiState.value.settings.activeWallpaperProvider == provider
+    if (isDisconnectingActive) {
+      stopJellyfinSlideshow()
+      cachedBackdrops = emptyList()
+      currentBackdropIndex = 0
+    }
+    updateSettings { settings ->
+      val base = if (isDisconnectingActive) settings.copy(jellyfinEnabled = false) else settings
+      when (provider) {
+        MediaWallpaperProvider.JELLYFIN -> base.copy(
+          jellyfinServerUrl = "",
+          jellyfinApiKey = "",
+          jellyfinUserId = "",
+          jellyfinLibraryIds = emptySet(),
+        )
+        MediaWallpaperProvider.PLEX -> base.copy(
+          plexServerUrl = "",
+          plexToken = "",
+          plexLibraryIds = emptySet(),
+        )
+        MediaWallpaperProvider.EMBY -> base.copy(
+          embyServerUrl = "",
+          embyApiKey = "",
+          embyUserId = "",
+          embyLibraryIds = emptySet(),
+        )
+        MediaWallpaperProvider.TMDB -> base.copy(
+          tmdbApiKey = "",
+          tmdbCategories = LauncherSettings.DEFAULT_TMDB_CATEGORIES,
+        )
+        MediaWallpaperProvider.REDDIT -> base
+      }
+    }
+    _uiState.update {
+      it.copy(
+        setupProviderDialog = null,
+        jellyfinSlide = if (isDisconnectingActive) null else it.jellyfinSlide,
+        jellyfinBackdropCount = if (isDisconnectingActive) 0 else it.jellyfinBackdropCount,
+        jellyfinLibraries = if (isDisconnectingActive) emptyList() else it.jellyfinLibraries,
+      )
+    }
+    showStatus("${provider.label} server disconnected")
+  }
+
+  // --- Backup & Restore Configuration ---
+
+  fun exportBackupJson(): String = backupSerializer.encodeToJson(_uiState.value.settings)
+
+  fun onBackupExported(success: Boolean) {
+    showStatus(if (success) "Configuration backed up" else "Could not save backup file")
+  }
+
+  fun restoreBackupJson(rawJson: String) {
+    val decoded = backupSerializer.decodeFromJson(rawJson, existing = _uiState.value.settings)
+    decoded.fold(
+      onSuccess = { restored ->
+        settingsStore.save(restored)
+        cachedBackdrops = emptyList()
+        currentBackdropIndex = 0
+        stopJellyfinSlideshow()
+        weatherJob?.cancel()
+        weatherJob = null
+        _uiState.update {
+          it.copy(
+            settings = restored,
+            isSettingsOpen = false,
+            jellyfinSlide = null,
+            jellyfinBackdropCount = 0,
+            jellyfinLibraries = emptyList(),
+            weatherData = if (restored.weatherEnabled) it.weatherData else null,
+          )
+        }
+        refreshApps()
+        if (restored.jellyfinEnabled && restored.isActiveWallpaperProviderConfigured) {
+          startJellyfinSlideshow(fetchFreshList = true)
+        }
+        if (restored.weatherEnabled && restored.isWeatherConfigured) {
+          startWeatherRefreshLoop()
+        }
+        showStatus("Configuration restored (${restored.rows.size} rows)")
+      },
+      onFailure = { err ->
+        showStatus(err.message ?: "Invalid backup file")
+      },
+    )
+  }
+
+  fun resetToDefaults() {
+    val oldCustomIcons = _uiState.value.settings.customIconPaths.values.toList()
+    val defaults = LauncherSettings()
+    settingsStore.save(defaults)
+    cachedBackdrops = emptyList()
+    currentBackdropIndex = 0
+    cachedPhotoEntries = emptyList()
+    currentPhotoIndex = 0
+    stopJellyfinSlideshow()
+    weatherJob?.cancel()
+    weatherJob = null
+    screensaverPhotoJob?.cancel()
+    screensaverPhotoJob = null
+    viewModelScope.launch {
+      oldCustomIcons.forEach { path -> appDataSource.deleteCustomIcon(path) }
+    }
+    _uiState.update {
+      it.copy(
+        settings = defaults,
+        isSettingsOpen = false,
+        isScreensaverActive = false,
+        jellyfinSlide = null,
+        jellyfinBackdropCount = 0,
+        jellyfinLibraries = emptyList(),
+        weatherData = null,
+        weatherFetchError = null,
+        screensaverPhotoSlide = null,
+        screensaverPhotoCount = 0,
+      )
+    }
+    refreshApps()
+    showStatus("Launcher reset to default settings")
+  }
+
+  private fun startJellyfinSlideshow(fetchFreshList: Boolean) {
+    slideshowJob?.cancel()
+    val settings = _uiState.value.settings
+    val provider = settings.activeWallpaperProvider
+    if ((!settings.jellyfinEnabled && !_uiState.value.isScreensaverActive) || !settings.isProviderConfigured(provider)) return
+    val client = dataSourceFor(provider)
+
+    slideshowJob = viewModelScope.launch {
+      var retrySeconds = 5L
+      while (isActive && (_uiState.value.settings.jellyfinEnabled || _uiState.value.isScreensaverActive) && (fetchFreshList || cachedBackdrops.isEmpty())) {
+        val current = _uiState.value.settings
+        val activeProvider = current.activeWallpaperProvider
+        val activeClient = dataSourceFor(activeProvider)
+        val serverUrl = current.serverUrlFor(activeProvider)
+        val token = current.tokenFor(activeProvider)
+        val userId = current.userIdFor(activeProvider)
+        val libraryIds = current.libraryIdsFor(activeProvider)
+
+        if (_uiState.value.jellyfinLibraries.isEmpty()) {
+          activeClient.fetchLibraries(
+            serverUrl = serverUrl,
+            token = token,
+            userId = userId,
+          ).onSuccess { libs ->
+            _uiState.update { it.copy(jellyfinLibraries = libs) }
+          }
+        }
+
+        val activeCfg = current.configFor(activeProvider)
+        val fetched = activeClient.fetchBackdrops(
+          serverUrl = serverUrl,
+          token = token,
+          userId = userId,
+          mediaType = JellyfinMediaType.fromId(activeCfg.mediaType),
+          libraryIds = libraryIds,
+          limit = activeCfg.backdropLimit,
+        )
+        if (fetched.isSuccess) {
+          val list = fetched.getOrDefault(emptyList())
+          cachedBackdrops = list
+          currentBackdropIndex = 0
+          _uiState.update { it.copy(jellyfinBackdropCount = list.size) }
+          if (list.isEmpty()) {
+            showStatus("No backdrops found for that ${activeProvider.label} filter")
+            return@launch
+          }
+          break
+        } else {
+          // Network/LAN may still be waking up after reboot — retry quickly
+          delay(retrySeconds * 1000L)
+          retrySeconds = (retrySeconds * 2L).coerceAtMost(60L)
+        }
+      }
+
+      if (cachedBackdrops.isEmpty()) return@launch
+
+      var consecutiveMisses = 0
+      while (isActive && (_uiState.value.settings.jellyfinEnabled || _uiState.value.isScreensaverActive)) {
+        val backdrop = cachedBackdrops[currentBackdropIndex % cachedBackdrops.size]
+        val activeProvider = _uiState.value.settings.activeWallpaperProvider
+        val token = _uiState.value.settings.tokenFor(activeProvider)
+        val imgDeferred = async {
+          client.downloadBackdropImage(imageUrl = backdrop.imageUrl, token = token)
+        }
+        val logoDeferred = async {
+          backdrop.logoUrl?.let { url ->
+            client.downloadLogoImage(logoUrl = url, token = token)
+          }
+        }
+        val img = imgDeferred.await()
+        val logoImg = logoDeferred.await()
+        if (img != null) {
+          consecutiveMisses = 0
+          _uiState.update {
+            it.copy(
+              jellyfinSlide = JellyfinSlide(
+                backdrop = backdrop,
+                image = img,
+                logoImage = logoImg,
+              ),
+              jellyfinBackdropCount = cachedBackdrops.size,
+            )
+          }
+          val waitSec = if (_uiState.value.isScreensaverActive) {
+            _uiState.value.settings.screensaverIntervalSeconds.coerceIn(5, 300)
+          } else {
+            _uiState.value.settings.activeWallpaperIntervalSeconds.coerceIn(10, 600)
+          }
+          delay(waitSec * 1000L)
+        } else {
+          consecutiveMisses++
+          // If an image URL was vertical/deleted/broken, skip quickly instead of waiting the full interval
+          delay(if (consecutiveMisses >= cachedBackdrops.size) 10_000L else 250L)
+        }
+        currentBackdropIndex = (currentBackdropIndex + 1) % cachedBackdrops.size
+      }
+    }
+  }
+
+  private fun stopJellyfinSlideshow() {
+    slideshowJob?.cancel()
+    slideshowJob = null
+    _uiState.update { it.copy(jellyfinSlide = null) }
+  }
+
+  // --- Weather Widget ---
+
+  fun openWeatherSetup() {
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        isWeatherDialogOpen = true,
+        weatherError = null,
+        weatherSearchResults = emptyList(),
+      )
+    }
+  }
+
+  fun closeWeatherSetup() {
+    _uiState.update {
+      it.copy(
+        isWeatherDialogOpen = false,
+        isSearchingWeather = false,
+        weatherError = null,
+      )
+    }
+  }
+
+  fun searchWeatherLocations(query: String) {
+    viewModelScope.launch {
+      _uiState.update { it.copy(isSearchingWeather = true, weatherError = null) }
+      weatherDataSource.searchLocations(query).fold(
+        onSuccess = { results ->
+          if (results.isEmpty()) {
+            _uiState.update {
+              it.copy(
+                isSearchingWeather = false,
+                weatherSearchResults = emptyList(),
+                weatherError = "No matching cities found for \"$query\".",
+              )
+            }
+          } else {
+            _uiState.update {
+              it.copy(
+                isSearchingWeather = false,
+                weatherSearchResults = results,
+                weatherError = null,
+              )
+            }
+          }
+        },
+        onFailure = { err ->
+          _uiState.update {
+            it.copy(
+              isSearchingWeather = false,
+              weatherError = err.message ?: "Unable to search locations right now",
+            )
+          }
+        },
+      )
+    }
+  }
+
+  fun selectWeatherLocation(location: WeatherLocation) {
+    updateSettings { settings ->
+      settings.copy(
+        weatherEnabled = true,
+        weatherLocationName = location.shortName,
+        weatherLatitude = location.latitude,
+        weatherLongitude = location.longitude,
+      )
+    }
+    _uiState.update {
+      it.copy(
+        isWeatherDialogOpen = false,
+        weatherSearchResults = emptyList(),
+        weatherError = null,
+      )
+    }
+    showStatus("Weather set to ${location.shortName}")
+    startWeatherRefreshLoop()
+  }
+
+  fun toggleWeatherEnabled() {
+    val settings = _uiState.value.settings
+    if (!settings.isWeatherConfigured) {
+      openWeatherSetup()
+      return
+    }
+    val nextEnabled = !settings.weatherEnabled
+    updateSettings { it.copy(weatherEnabled = nextEnabled) }
+    if (nextEnabled) {
+      startWeatherRefreshLoop()
+      showStatus("Weather enabled")
+    } else {
+      weatherJob?.cancel()
+      weatherJob = null
+      showStatus("Weather hidden")
+    }
+  }
+
+  fun setWeatherDays(days: Int) {
+    updateSettings { it.copy(weatherDays = days.coerceIn(1, 7)) }
+  }
+
+  fun toggleWeatherShowForecast() {
+    updateSettings { it.copy(weatherShowForecast = !it.weatherShowForecast) }
+  }
+
+  fun setWeatherForecastSize(sizeId: String) {
+    val parsed = WeatherForecastSize.fromId(sizeId)
+    updateSettings { it.copy(weatherForecastSize = parsed.id) }
+  }
+
+  fun toggleWeatherUnit() {
+    updateSettings { it.copy(weatherUseFahrenheit = !it.weatherUseFahrenheit) }
+    if (_uiState.value.settings.weatherEnabled && _uiState.value.settings.isWeatherConfigured) {
+      startWeatherRefreshLoop()
+    }
+  }
+
+  fun setWeatherIconStyle(styleId: String) {
+    updateSettings { it.copy(weatherIconStyle = styleId) }
+  }
+
+  fun toggleWeatherBackdrop() {
+    updateSettings { it.copy(weatherShowBackdrop = !it.weatherShowBackdrop) }
+  }
+
+  fun refreshWeather() {
+    if (_uiState.value.settings.isWeatherConfigured) {
+      startWeatherRefreshLoop()
+      showStatus("Refreshing weather…")
+    }
+  }
+
+  private fun startWeatherRefreshLoop() {
+    weatherJob?.cancel()
+    val s = _uiState.value.settings
+    val lat = s.weatherLatitude ?: return
+    val lon = s.weatherLongitude ?: return
+    if (!s.weatherEnabled) return
+
+    weatherJob = viewModelScope.launch {
+      var retrySeconds = 5L
+      while (isActive && _uiState.value.settings.weatherEnabled) {
+        val currentSettings = _uiState.value.settings
+        val result = weatherDataSource.fetchForecast(
+          locationName = currentSettings.weatherLocationName,
+          latitude = currentSettings.weatherLatitude ?: lat,
+          longitude = currentSettings.weatherLongitude ?: lon,
+          useFahrenheit = currentSettings.weatherUseFahrenheit,
+        )
+        if (result.isSuccess) {
+          retrySeconds = 5L
+          result.getOrNull()?.let { data ->
+            _uiState.update { it.copy(weatherData = data, weatherFetchError = null) }
+          }
+          // Auto-refresh every 30 minutes once connected
+          delay(30L * 60L * 1000L)
+        } else {
+          val errMsg = result.exceptionOrNull()?.message
+            ?: "Unable to reach weather service right now."
+          _uiState.update { state ->
+            if (state.weatherData == null) state.copy(weatherFetchError = errMsg) else state
+          }
+          // Retry quickly if Wi-Fi/DNS wasn't up yet after reboot
+          delay(retrySeconds * 1000L)
+          retrySeconds = (retrySeconds * 2L).coerceAtMost(60L)
+        }
+      }
+    }
+  }
+
+  // --- Custom App Icons ---
+
+  fun setCustomAppIcon(packageName: String, sourceUri: Uri) {
+    viewModelScope.launch {
+      val savedPath = appDataSource.saveCustomIcon(packageName, sourceUri)
+      if (savedPath != null) {
+        updateSettings { settings ->
+          val updated = settings.customIconPaths.toMutableMap()
+          updated[packageName] = savedPath
+          settings.copy(customIconPaths = updated)
+        }
+        refreshApps()
+        showStatus("Custom icon updated")
+      } else {
+        showStatus("Could not load selected image")
+      }
+    }
+  }
+
+  fun resetCustomAppIcon(packageName: String) {
+    viewModelScope.launch {
+      val existingPath = _uiState.value.settings.customIconPaths[packageName]
+      appDataSource.deleteCustomIcon(existingPath)
+      updateSettings { settings ->
+        settings.copy(customIconPaths = settings.customIconPaths - packageName)
+      }
+      closeAppMenu()
+      refreshApps()
+      showStatus("Restored original app icon")
+    }
+  }
+
+  // --- Hiding, Filtering, Appearance & System ---
+
+  fun hideApp(packageName: String) {
+    val appLabel = _uiState.value.allVisibleApps.firstOrNull { it.packageName == packageName }?.label ?: "App"
+    updateSettings { settings ->
+      settings.copy(
+        hiddenPackages = settings.hiddenPackages + packageName,
+        rows = settings.rows.map { it.copy(packageNames = it.packageNames - packageName) },
+      )
+    }
+    _uiState.update {
+      it.copy(
+        menuTarget = null,
+        reorderingTarget = if (it.reorderingTarget?.packageName == packageName) null else it.reorderingTarget,
+      )
+    }
+    showStatus("Hidden $appLabel (restore anytime in Customize)")
+  }
+
+  fun unhideApp(packageName: String) {
+    val appLabel = _uiState.value.allApps.firstOrNull { it.packageName == packageName }?.label ?: "App"
+    updateSettings { settings ->
+      settings.copy(hiddenPackages = settings.hiddenPackages - packageName)
+    }
+    showStatus("Restored $appLabel")
+  }
+
+  fun setFilter(filter: AppFilter) {
+    _uiState.update { it.copy(selectedFilter = filter) }
+  }
+
+  fun toggleSearch() {
+    val nextVisible = !_uiState.value.isSearchVisible
+    if (!nextVisible) {
+      jellyfinSearchJob?.cancel()
+      streamingSearchJob?.cancel()
+    }
+    _uiState.update {
+      it.copy(
+        isSearchVisible = nextVisible,
+        searchQuery = if (nextVisible) it.searchQuery else "",
+        searchProvider = if (nextVisible) it.searchProvider else SearchProviderFilter.ALL,
+        isSearchingJellyfin = if (nextVisible) it.isSearchingJellyfin else false,
+        jellyfinSearchResults = if (nextVisible) it.jellyfinSearchResults else emptyList(),
+        jellyfinSearchError = if (nextVisible) it.jellyfinSearchError else null,
+        isSearchingStreaming = if (nextVisible) it.isSearchingStreaming else false,
+        streamingSearchResults = if (nextVisible) it.streamingSearchResults else emptyList(),
+        streamingSearchError = if (nextVisible) it.streamingSearchError else null,
+      )
+    }
+  }
+
+  fun setSearchProvider(provider: SearchProviderFilter) {
+    _uiState.update { it.copy(searchProvider = provider) }
+  }
+
+  fun updateSearchQuery(query: String) {
+    _uiState.update { it.copy(searchQuery = query, jellyfinSearchError = null, streamingSearchError = null) }
+    jellyfinSearchJob?.cancel()
+    streamingSearchJob?.cancel()
+    val s = _uiState.value.settings
+    val trimmed = query.trim()
+
+    val jellyfinSearchOn = s.isJellyfinConfigured &&
+      s.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JELLYFIN)
+    if (!jellyfinSearchOn || trimmed.length < 2) {
+      _uiState.update {
+        it.copy(
+          isSearchingJellyfin = false,
+          jellyfinSearchResults = emptyList(),
+          jellyfinSearchError = null,
+        )
+      }
+    } else {
+      jellyfinSearchJob = viewModelScope.launch {
+        _uiState.update { it.copy(isSearchingJellyfin = true, jellyfinSearchError = null) }
+        delay(300L)
+        val res = jellyfinDataSource.searchItems(
+          serverUrl = s.jellyfinServerUrl,
+          token = s.jellyfinApiKey,
+          userId = s.jellyfinUserId,
+          query = trimmed,
+        )
+        res.fold(
+          onSuccess = { items ->
+            _uiState.update {
+              it.copy(
+                isSearchingJellyfin = false,
+                jellyfinSearchResults = items,
+                jellyfinSearchError = null,
+              )
+            }
+            val hydrated = items.map { item ->
+              async {
+                val url = item.imageUrl
+                val thumb = if (url != null) {
+                  jellyfinDataSource.downloadThumbnail(url, s.jellyfinApiKey)
+                } else {
+                  null
+                }
+                item.copy(thumbnail = thumb)
+              }
+            }.map { it.await() }
+            if (_uiState.value.searchQuery.trim() == trimmed) {
+              _uiState.update { it.copy(jellyfinSearchResults = hydrated) }
+            }
+          },
+          onFailure = { err ->
+            _uiState.update {
+              it.copy(
+                isSearchingJellyfin = false,
+                jellyfinSearchResults = emptyList(),
+                jellyfinSearchError = err.message ?: "Could not search Jellyfin right now",
+              )
+            }
+          },
+        )
+      }
+    }
+
+    val justWatchOn = s.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JUSTWATCH)
+    if (!justWatchOn || trimmed.length < 2) {
+      _uiState.update {
+        it.copy(
+          isSearchingStreaming = false,
+          streamingSearchResults = emptyList(),
+          streamingSearchError = null,
+        )
+      }
+    } else {
+      streamingSearchJob = viewModelScope.launch {
+        _uiState.update { it.copy(isSearchingStreaming = true, streamingSearchError = null) }
+        delay(350L)
+        val res = streamingSearchDataSource.searchTitles(
+          query = trimmed,
+          countryCode = "GB",
+          limit = 8,
+        )
+        res.fold(
+          onSuccess = { items ->
+            _uiState.update {
+              it.copy(
+                isSearchingStreaming = false,
+                streamingSearchResults = items,
+                streamingSearchError = null,
+              )
+            }
+            val hydrated = items.map { item ->
+              async {
+                val url = item.posterUrl
+                val poster = if (url != null) {
+                  streamingSearchDataSource.downloadPoster(url)
+                } else {
+                  null
+                }
+                item.copy(poster = poster)
+              }
+            }.map { it.await() }
+            if (_uiState.value.searchQuery.trim() == trimmed) {
+              _uiState.update { it.copy(streamingSearchResults = hydrated) }
+            }
+          },
+          onFailure = { err ->
+            _uiState.update {
+              it.copy(
+                isSearchingStreaming = false,
+                streamingSearchResults = emptyList(),
+                streamingSearchError = err.message ?: "Could not search JustWatch right now",
+              )
+            }
+          },
+        )
+      }
+    }
+  }
+
+  fun openStreamingOffer(offer: StreamingOffer) {
+    if (appDataSource.openStreamingOffer(offer)) {
+      toggleSearch()
+    } else {
+      showStatus("Could not open ${offer.providerName}")
+    }
+  }
+
+  fun openJellyfinSearchItem(item: JellyfinSearchItem) {
+    val serverUrl = _uiState.value.settings.jellyfinServerUrl
+    if (appDataSource.openJellyfinItem(serverUrl, item.itemId)) {
+      toggleSearch()
+    } else {
+      showStatus("Could not open ${item.title} in Jellyfin")
+    }
+  }
+
+  fun openYouTubeSearch(query: String) {
+    val q = query.trim()
+    if (q.isEmpty()) return
+    if (appDataSource.openYouTubeSearch(q)) {
+      toggleSearch()
+    } else {
+      showStatus("No YouTube or browser app available")
+    }
+  }
+
+  fun openWebSearch(query: String) {
+    val q = query.trim()
+    if (q.isEmpty()) return
+    if (appDataSource.openWebSearch(q)) {
+      toggleSearch()
+    } else {
+      showStatus("No web browser app available")
+    }
+  }
+
+  fun openExternalProviderSearch(provider: ExternalSearchProvider, query: String) {
+    val q = query.trim()
+    if (q.isEmpty()) return
+    if (appDataSource.openExternalProviderSearch(provider, q)) {
+      toggleSearch()
+    } else {
+      showStatus("Could not open search in ${provider.label}")
+    }
+  }
+
+  fun openSettings() {
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = true,
+        menuTarget = null,
+        reorderingTarget = null,
+      )
+    }
+  }
+
+  fun closeSettings() {
+    _uiState.update { it.copy(isSettingsOpen = false) }
+  }
+
+  fun selectTheme(themeId: String) {
+    stopJellyfinSlideshow()
+    updateSettings {
+      it.copy(
+        themeId = themeId,
+        customWallpaperUri = null,
+        jellyfinEnabled = false,
+      )
+    }
+  }
+
+  fun selectAccent(accentId: String) {
+    updateSettings { it.copy(accentId = accentId) }
+  }
+
+  fun setCustomWallpaper(uriString: String?) {
+    if (uriString != null) {
+      stopJellyfinSlideshow()
+    }
+    updateSettings {
+      it.copy(
+        customWallpaperUri = uriString,
+        jellyfinEnabled = if (uriString != null) false else it.jellyfinEnabled,
+      )
+    }
+    if (uriString != null) {
+      showStatus("Custom wallpaper applied")
+    } else {
+      showStatus("Switched back to ambient theme")
+    }
+  }
+
+  fun setWallpaperDimAlpha(alpha: Float) {
+    updateSettings { it.copy(wallpaperDimAlpha = alpha.coerceIn(0.20f, 0.85f)) }
+  }
+
+  fun toggle24HourClock() {
+    updateSettings { it.copy(use24HourClock = !it.use24HourClock) }
+  }
+
+  fun toggleShowClock() {
+    updateSettings { it.copy(showClock = !it.showClock) }
+  }
+
+  fun toggleShowDate() {
+    updateSettings { it.copy(showDate = !it.showDate) }
+  }
+
+  fun toggleLockHomeLayout() {
+    val nextLocked = !_uiState.value.settings.lockHomeLayout
+    updateSettings { it.copy(lockHomeLayout = nextLocked) }
+    if (nextLocked) {
+      _uiState.update { it.copy(reorderingTarget = null) }
+    }
+    showStatus(if (nextLocked) "Home layout locked" else "Home layout unlocked")
+  }
+
+  fun setHomeTileSize(sizeId: String) {
+    val resolved = HomeTileSize.fromId(sizeId)
+    updateSettings { it.copy(homeTileSize = resolved.id) }
+  }
+
+  fun toggleShowNonLeanbackApps() {
+    updateSettings { it.copy(showNonLeanbackApps = !it.showNonLeanbackApps) }
+  }
+
+  fun toggleShowSearchBar() {
+    val nextShow = !_uiState.value.settings.showSearchBar
+    updateSettings { it.copy(showSearchBar = nextShow) }
+    if (!nextShow && _uiState.value.isSearchVisible) {
+      toggleSearch()
+    }
+  }
+
+  fun toggleShowAllAppsSection() {
+    updateSettings { it.copy(showAllAppsSection = !it.showAllAppsSection) }
+  }
+
+  fun toggleShowAddAppTile() {
+    val next = !_uiState.value.settings.showAddAppTile
+    updateSettings { it.copy(showAddAppTile = next) }
+    showStatus(if (next) "\"+ Add App\" tiles shown on rows" else "\"+ Add App\" tiles hidden (rows locked)")
+  }
+
+  fun toggleShowTileTitles() {
+    val next = !_uiState.value.settings.showTileTitles
+    updateSettings { it.copy(showTileTitles = next) }
+    showStatus(if (next) "App titles shown under tiles" else "App titles hidden under tiles")
+  }
+
+  fun toggleSearchProvider(providerId: String) {
+    updateSettings { settings ->
+      val updated = if (providerId in settings.disabledSearchProviders) {
+        settings.disabledSearchProviders - providerId
+      } else {
+        settings.disabledSearchProviders + providerId
+      }
+      settings.copy(disabledSearchProviders = updated)
+    }
+  }
+
+  fun toggleJustWatchFilterServices() {
+    val next = !_uiState.value.settings.justWatchFilterServices
+    updateSettings { it.copy(justWatchFilterServices = next) }
+    showStatus(if (next) "JustWatch filtered to your selected services" else "Showing all JustWatch streaming services")
+  }
+
+  fun toggleJustWatchService(serviceId: String) {
+    updateSettings { settings ->
+      val updated = if (serviceId in settings.justWatchServices) {
+        settings.justWatchServices - serviceId
+      } else {
+        settings.justWatchServices + serviceId
+      }
+      settings.copy(
+        justWatchServices = updated,
+        justWatchFilterServices = true,
+      )
+    }
+  }
+
+  fun selectAllJustWatchServices() {
+    val allIds = JustWatchServicePreset.entries.map { it.id }.toSet()
+    updateSettings {
+      it.copy(
+        justWatchServices = allIds,
+        justWatchFilterServices = true,
+      )
+    }
+    showStatus("All streaming services selected")
+  }
+
+  fun clearAllJustWatchServices() {
+    updateSettings {
+      it.copy(justWatchServices = emptySet())
+    }
+    showStatus("Cleared selected streaming services")
+  }
+
+  fun toggleJustWatchIncludeRentBuy() {
+    val next = !_uiState.value.settings.justWatchIncludeRentBuy
+    updateSettings { it.copy(justWatchIncludeRentBuy = next) }
+    showStatus(if (next) "Rent & Buy offers included" else "Only showing subscription & free offers")
+  }
+
+  fun toggleJustWatchHideUnmatchedTitles() {
+    val next = !_uiState.value.settings.justWatchHideUnmatchedTitles
+    updateSettings { it.copy(justWatchHideUnmatchedTitles = next) }
+    showStatus(if (next) "Hiding titles without offers on your services" else "Showing all matching titles")
+  }
+
+  fun setGridColumns(columns: Int) {
+    updateSettings { it.copy(gridColumns = columns.coerceIn(4, 6)) }
+  }
+
+  fun openAppInfo(packageName: String) {
+    closeAppMenu()
+    if (!appDataSource.openAppInfo(packageName)) {
+      showStatus("App Info not available on this device")
+    }
+  }
+
+  fun uninstallApp(packageName: String) {
+    closeAppMenu()
+    if (!appDataSource.uninstallApp(packageName)) {
+      showStatus("Unable to open uninstall prompt")
+    }
+  }
+
+  fun openWifiSettings() {
+    if (!appDataSource.openWifiSettings()) {
+      showStatus("Unable to open Wi-Fi settings")
+    }
+  }
+
+  fun openBluetoothSettings() {
+    if (!appDataSource.openBluetoothSettings()) {
+      showStatus("Unable to open Bluetooth settings")
+    }
+  }
+
+  fun openSystemSettings() {
+    if (!appDataSource.openSystemSettings()) {
+      showStatus("Unable to open System Settings")
+    }
+  }
+
+  fun openHomeSettings() {
+    if (!appDataSource.openHomeSettings()) {
+      showStatus("Open Android Settings → Apps → Default apps to set Horizon as Home")
+    }
+  }
+
+  // --- Screensaver ---
+
+  fun startScreensaver() {
+    val s = _uiState.value.settings
+    _uiState.update {
+      it.copy(
+        isScreensaverActive = true,
+        isSettingsOpen = false,
+        isSearchVisible = false,
+        menuTarget = null,
+      )
+    }
+    when (s.activeScreensaverMode) {
+      ScreensaverMode.PHOTOS -> startScreensaverPhotoLoop()
+      ScreensaverMode.WALLPAPER_ARTWORK -> {
+        if (s.isActiveWallpaperProviderConfigured && (_uiState.value.jellyfinSlide == null || slideshowJob?.isActive != true)) {
+          startJellyfinSlideshow(fetchFreshList = cachedBackdrops.isEmpty())
+        }
+      }
+      ScreensaverMode.AMBIENT -> Unit
+    }
+  }
+
+  fun stopScreensaver() {
+    screensaverPhotoJob?.cancel()
+    screensaverPhotoJob = null
+    _uiState.update { it.copy(isScreensaverActive = false) }
+    val s = _uiState.value.settings
+    if (!s.jellyfinEnabled) {
+      slideshowJob?.cancel()
+      slideshowJob = null
+    }
+  }
+
+  fun toggleScreensaverEnabled() {
+    val willEnable = !_uiState.value.settings.screensaverEnabled
+    updateSettings { it.copy(screensaverEnabled = willEnable) }
+    showStatus(if (willEnable) "Idle screensaver enabled" else "Idle screensaver turned off")
+  }
+
+  fun setScreensaverMode(mode: ScreensaverMode) {
+    updateSettings { it.copy(screensaverMode = mode.id) }
+  }
+
+  fun setScreensaverTimeoutMinutes(minutes: Int) {
+    updateSettings { it.copy(screensaverTimeoutMinutes = minutes.coerceIn(1, 60)) }
+  }
+
+  fun setScreensaverIntervalSeconds(seconds: Int) {
+    updateSettings { it.copy(screensaverIntervalSeconds = seconds.coerceIn(5, 300)) }
+  }
+
+  fun toggleScreensaverKenBurns() {
+    updateSettings { it.copy(screensaverKenBurns = !it.screensaverKenBurns) }
+  }
+
+  fun toggleScreensaverShowClock() {
+    updateSettings { it.copy(screensaverShowClock = !it.screensaverShowClock) }
+  }
+
+  fun toggleScreensaverShowWeather() {
+    updateSettings { it.copy(screensaverShowWeather = !it.screensaverShowWeather) }
+  }
+
+  fun toggleScreensaverShowTitle() {
+    updateSettings { it.copy(screensaverShowTitle = !it.screensaverShowTitle) }
+  }
+
+  fun toggleScreensaverBurnInShift() {
+    updateSettings { it.copy(screensaverBurnInShift = !it.screensaverBurnInShift) }
+  }
+
+  fun setScreensaverDimAlpha(alpha: Float) {
+    updateSettings { it.copy(screensaverDimAlpha = alpha.coerceIn(0f, 0.75f)) }
+  }
+
+  fun toggleScreensaverAmbientCycle() {
+    updateSettings { it.copy(screensaverAmbientCycle = !it.screensaverAmbientCycle) }
+  }
+
+  fun setScreensaverPhotoFolder(uri: String?) {
+    updateSettings { it.copy(screensaverPhotoFolderUri = uri) }
+    refreshScreensaverPhotoCount(showToast = true)
+  }
+
+  fun setScreensaverPhotoUris(uris: List<String>) {
+    val cleaned = uris.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    updateSettings { it.copy(screensaverPhotoUris = cleaned) }
+    refreshScreensaverPhotoCount(showToast = true)
+  }
+
+  fun clearScreensaverPhotos() {
+    screensaverPhotoJob?.cancel()
+    cachedPhotoEntries = emptyList()
+    currentPhotoIndex = 0
+    updateSettings {
+      it.copy(
+        screensaverPhotoFolderUri = null,
+        screensaverPhotoUris = emptyList(),
+      )
+    }
+    _uiState.update { it.copy(screensaverPhotoSlide = null, screensaverPhotoCount = 0) }
+    showStatus("Screensaver photos cleared")
+  }
+
+  private fun refreshScreensaverPhotoCount(showToast: Boolean = false) {
+    val source = screensaverPhotoSource ?: return
+    val s = _uiState.value.settings
+    if (s.screensaverPhotoFolderUri.isNullOrBlank() && s.screensaverPhotoUris.isEmpty()) {
+      cachedPhotoEntries = emptyList()
+      _uiState.update { it.copy(screensaverPhotoCount = 0, screensaverPhotoSlide = null) }
+      return
+    }
+    viewModelScope.launch {
+      val entries = source.listPhotos(s.screensaverPhotoFolderUri, s.screensaverPhotoUris)
+      cachedPhotoEntries = entries.shuffled()
+      currentPhotoIndex = 0
+      _uiState.update { it.copy(screensaverPhotoCount = entries.size) }
+      if (showToast) {
+        if (entries.isEmpty()) {
+          showStatus("No images found in selection")
+        } else {
+          showStatus("Loaded ${entries.size} photo${if (entries.size == 1) "" else "s"} for screensaver")
+        }
+      }
+    }
+  }
+
+  private fun startScreensaverPhotoLoop() {
+    val source = screensaverPhotoSource ?: return
+    screensaverPhotoJob?.cancel()
+    screensaverPhotoJob = viewModelScope.launch {
+      val s = _uiState.value.settings
+      if (cachedPhotoEntries.isEmpty()) {
+        cachedPhotoEntries = source.listPhotos(s.screensaverPhotoFolderUri, s.screensaverPhotoUris).shuffled()
+        _uiState.update { it.copy(screensaverPhotoCount = cachedPhotoEntries.size) }
+      }
+      if (cachedPhotoEntries.isEmpty()) return@launch
+
+      while (isActive && _uiState.value.isScreensaverActive) {
+        val entry = cachedPhotoEntries[currentPhotoIndex % cachedPhotoEntries.size]
+        currentPhotoIndex = (currentPhotoIndex + 1) % cachedPhotoEntries.size
+        val slide = source.loadPhoto(entry)
+        if (slide != null) {
+          _uiState.update { it.copy(screensaverPhotoSlide = slide) }
+          val waitMs = (_uiState.value.settings.screensaverIntervalSeconds.coerceIn(5, 300) * 1_000L)
+          delay(waitMs)
+        } else {
+          delay(350L)
+        }
+      }
+    }
+  }
+
+  fun openPlayStore() {
+    closeSettings()
+    if (!appDataSource.openPlayStore()) {
+      showStatus("Google Play Store is not installed on this device")
+    }
+  }
+
+  private fun updateSettings(transform: (LauncherSettings) -> LauncherSettings) {
+    val updated = transform(_uiState.value.settings)
+    settingsStore.save(updated)
+    _uiState.update { it.copy(settings = updated) }
+  }
+
+  private fun showStatus(message: String) {
+    statusJob?.cancel()
+    _uiState.update { it.copy(statusMessage = message) }
+    statusJob = viewModelScope.launch {
+      delay(3000)
+      _uiState.update { it.copy(statusMessage = null) }
+    }
+  }
+
+  class Factory(
+    private val appDataSource: InstalledAppsDataSource,
+    private val settingsStore: SettingsStore,
+    private val jellyfinDataSource: JellyfinDataSource = JellyfinClient(),
+    private val weatherDataSource: WeatherDataSource = WeatherClient(),
+    private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
+  ) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+      return LauncherViewModel(
+        appDataSource = appDataSource,
+        settingsStore = settingsStore,
+        jellyfinDataSource = jellyfinDataSource,
+        weatherDataSource = weatherDataSource,
+        screensaverPhotoSource = screensaverPhotoSource,
+      ) as T
+    }
+  }
+}

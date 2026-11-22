@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Secondary Soft Aurora Echo Ribbon -->
+    <path
+        android:pathData="M18,72 Q42,38 62,56 T92,46"
+        android:strokeWidth="3.2"
+        android:strokeAlpha="0.48"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="18"
+                android:startY="72"
+                android:endX="92"
+                android:endY="46"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#2DD4BF" />
+                <item android:offset="0.5" android:color="#38BDF8" />
+                <item android:offset="1.0" android:color="#A855F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Primary Luminous Aurora Ribbon -->
+    <path
+        android:pathData="M14,66 Q38,24 58,46 T94,35"
+        android:strokeWidth="6.8"
+        android:strokeAlpha="0.95"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="14"
+                android:startY="66"
+                android:endX="94"
+                android:endY="35"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#2DD4BF" />
+                <item android:offset="0.5" android:color="#38BDF8" />
+                <item android:offset="1.0" android:color="#A855F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Crisp Geometric Mountain Ridge Silhouette -->
+    <path
+        android:fillColor="#090D1C"
+        android:pathData="M0,84 L34,55 L56,72 L78,50 L108,78 L108,108 L0,108 Z" />
+
+    <!-- Subtle Lit Mountain Facets -->
+    <path
+        android:fillColor="#1E293B"
+        android:fillAlpha="0.72"
+        android:pathData="M34,55 L46,64 L28,77 Z" />
+    <path
+        android:fillColor="#1E293B"
+        android:fillAlpha="0.72"
+        android:pathData="M78,50 L89,61 L71,73 Z" />
+
+    <!-- Subtle Horizon Rim Highlight -->
+    <path
+        android:pathData="M24,78 L84,78"
+        android:strokeWidth="1.6"
+        android:strokeAlpha="0.55"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="24"
+                android:startY="78"
+                android:endX="84"
+                android:endY="78"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#002DD4BF" />
+                <item android:offset="0.5" android:color="#5EEAD4" />
+                <item android:offset="1.0" android:color="#00A855F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

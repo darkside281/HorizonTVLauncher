@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Option 5: Aurora Ridge Deep Indigo -> Midnight -> Emerald Canvas -->
+    <path android:pathData="M0,0h320v180h-320z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="320"
+                android:endY="180"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#1E1B4B" />
+                <item android:offset="0.52" android:color="#0F172A" />
+                <item android:offset="1.0" android:color="#042F2E" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Soft Aurora Sky Glow -->
+    <path android:pathData="M160,72m-150,0a150,70 0,1 1,300 0a150,70 0,1 1,-300 0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="160"
+                android:centerY="72"
+                android:gradientRadius="150"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#3838BDF8" />
+                <item android:offset="0.55" android:color="#1C2DD4BF" />
+                <item android:offset="1.0" android:color="#000F172A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Secondary Sweeping Aurora Ribbon -->
+    <path
+        android:pathData="M0,128 Q84,56 164,92 T320,68"
+        android:strokeWidth="3.8"
+        android:strokeAlpha="0.45"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="0"
+                android:startY="128"
+                android:endX="320"
+                android:endY="68"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#2DD4BF" />
+                <item android:offset="0.5" android:color="#38BDF8" />
+                <item android:offset="1.0" android:color="#A855F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Primary Sweeping Aurora Ribbon -->
+    <path
+        android:pathData="M0,116 Q72,34 150,76 T320,50"
+        android:strokeWidth="9.0"
+        android:strokeAlpha="0.90"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="0"
+                android:startY="116"
+                android:endX="320"
+                android:endY="50"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#2DD4BF" />
+                <item android:offset="0.5" android:color="#38BDF8" />
+                <item android:offset="1.0" android:color="#A855F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Geometric Mountain Skyline Ridge -->
+    <path
+        android:fillColor="#090D1C"
+        android:pathData="M0,146 L58,102 L106,130 L162,94 L224,138 L278,108 L320,140 L320,180 L0,180 Z" />
+
+    <!-- Subtle Lit Mountain Facets -->
+    <path
+        android:fillColor="#1E293B"
+        android:fillAlpha="0.62"
+        android:pathData="M58,102 L78,118 L48,142 Z" />
+    <path
+        android:fillColor="#1E293B"
+        android:fillAlpha="0.62"
+        android:pathData="M162,94 L184,114 L148,136 Z" />
+    <path
+        android:fillColor="#1E293B"
+        android:fillAlpha="0.58"
+        android:pathData="M278,108 L296,124 L266,144 Z" />
+
+    <!-- Clean Geometric "HORIZON" Emblem & Accent Bar -->
+    <!-- H -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,64h5v30h-5z M80,64h5v30h-5z M62,76.5h23v4.5h-23z" />
+    <!-- O -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M107,63.5a15.5,15.5 0,1 0,0.01 0z M107,68.5a10.5,10.5 0,1 1,-0.01 0z" />
+    <!-- R -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M132,64h5v30h-5z M132,64h13a8.5,8.5 0,0 1,0 17h-13v-4.5h12.5a4,4 0,0 0,0 -8h-12.5z M141,79.5l10,14.5h-6l-9.5,-14.5z" />
+    <!-- I -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M162,64h5v30h-5z" />
+    <!-- Z -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M178,64h22v4.8l-15.2,20.4h15.2v4.8h-22v-4.8l15.2,-20.4h-15.2z" />
+    <!-- O -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M222,63.5a15.5,15.5 0,1 0,0.01 0z M222,68.5a10.5,10.5 0,1 1,-0.01 0z" />
+    <!-- N -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M247,64h5v30h-5z M266,64h5v30h-5z M247,64h5.2l18.8,22.5v7.5h-5.2l-18.8,-22.5z" />
+
+    <!-- Subtle Glowing Accent Bar Below Wordmark -->
+    <path android:pathData="M116,104h88a2,2 0,0 1,0 4h-88a2,2 0,0 1,0 -4z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="116"
+                android:startY="106"
+                android:endX="204"
+                android:endY="106"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#2DD4BF" />
+                <item android:offset="0.5" android:color="#38BDF8" />
+                <item android:offset="1.0" android:color="#A855F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
