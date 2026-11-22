@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.horizontv.launcher.data.AppUpdateDataSource
 import com.horizontv.launcher.data.InstalledAppsDataSource
 import com.horizontv.launcher.data.JellyfinClient
 import com.horizontv.launcher.data.JellyfinDataSource
@@ -63,6 +64,8 @@ class LauncherViewModel(
   private val tmdbDataSource: JellyfinDataSource = TmdbWallpaperClient(),
   private val streamingSearchDataSource: StreamingSearchDataSource = JustWatchClient(),
   private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
+  private val appUpdateDataSource: AppUpdateDataSource? = null,
+  private val currentVersionName: String = "2.5.17",
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(
@@ -104,6 +107,12 @@ class LauncherViewModel(
       startWeatherRefreshLoop()
     }
     refreshScreensaverPhotoCount()
+    if (appUpdateDataSource != null) {
+      viewModelScope.launch {
+        delay(4_000L)
+        checkForUpdates(manual = false)
+      }
+    }
   }
 
   private fun observeNetworkRecovery() {
@@ -1773,6 +1782,104 @@ class LauncherViewModel(
     }
   }
 
+  // --- GitHub Self-Updater ---
+
+  fun checkForUpdates(manual: Boolean = true) {
+    val updater = appUpdateDataSource ?: return
+    if (_uiState.value.isCheckingForUpdate || _uiState.value.isDownloadingUpdate) return
+    viewModelScope.launch {
+      _uiState.update { it.copy(isCheckingForUpdate = true, updateStatusText = null) }
+      updater.checkForUpdate(currentVersionName).fold(
+        onSuccess = { update ->
+          if (update != null) {
+            _uiState.update {
+              it.copy(
+                isCheckingForUpdate = false,
+                availableUpdate = update,
+                showUpdateDialog = true,
+                updateStatusText = null,
+              )
+            }
+          } else {
+            _uiState.update {
+              it.copy(
+                isCheckingForUpdate = false,
+                availableUpdate = null,
+                showUpdateDialog = false,
+                updateStatusText = if (manual) "You're up to date (v$currentVersionName)" else null,
+              )
+            }
+            if (manual) {
+              showStatus("Horizon TV Launcher is up to date (v$currentVersionName)")
+            }
+          }
+        },
+        onFailure = { err ->
+          _uiState.update {
+            it.copy(
+              isCheckingForUpdate = false,
+              updateStatusText = if (manual) (err.message ?: "Could not check GitHub for updates") else null,
+            )
+          }
+          if (manual) {
+            showStatus(err.message ?: "Could not check GitHub for updates")
+          }
+        },
+      )
+    }
+  }
+
+  fun openUpdateDialog() {
+    if (_uiState.value.availableUpdate != null) {
+      _uiState.update { it.copy(showUpdateDialog = true, updateStatusText = null) }
+    }
+  }
+
+  fun dismissUpdateDialog() {
+    if (_uiState.value.isDownloadingUpdate) return
+    _uiState.update { it.copy(showUpdateDialog = false, updateStatusText = null) }
+  }
+
+  fun installAvailableUpdate() {
+    val updater = appUpdateDataSource ?: return
+    val update = _uiState.value.availableUpdate ?: return
+    if (_uiState.value.isDownloadingUpdate) return
+    viewModelScope.launch {
+      _uiState.update {
+        it.copy(
+          isDownloadingUpdate = true,
+          updateDownloadProgress = 0f,
+          updateStatusText = null,
+        )
+      }
+      updater.downloadAndInstall(
+        update = update,
+        onProgress = { progress ->
+          _uiState.update { it.copy(updateDownloadProgress = progress) }
+        },
+      ).fold(
+        onSuccess = {
+          _uiState.update {
+            it.copy(
+              isDownloadingUpdate = false,
+              showUpdateDialog = false,
+            )
+          }
+        },
+        onFailure = { err ->
+          val msg = err.message ?: "Could not download update"
+          _uiState.update {
+            it.copy(
+              isDownloadingUpdate = false,
+              updateStatusText = msg,
+            )
+          }
+          showStatus(msg)
+        },
+      )
+    }
+  }
+
   fun openPlayStore() {
     closeSettings()
     if (!appDataSource.openPlayStore()) {
@@ -1801,6 +1908,8 @@ class LauncherViewModel(
     private val jellyfinDataSource: JellyfinDataSource = JellyfinClient(),
     private val weatherDataSource: WeatherDataSource = WeatherClient(),
     private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
+    private val appUpdateDataSource: AppUpdateDataSource? = null,
+    private val currentVersionName: String = "2.5.17",
   ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -1810,6 +1919,8 @@ class LauncherViewModel(
         jellyfinDataSource = jellyfinDataSource,
         weatherDataSource = weatherDataSource,
         screensaverPhotoSource = screensaverPhotoSource,
+        appUpdateDataSource = appUpdateDataSource,
+        currentVersionName = currentVersionName,
       ) as T
     }
   }

@@ -2,7 +2,7 @@
 
 A clean, fast, ad-free **Android TV / Nvidia Shield home launcher** built with Jetpack Compose — designed for living-room full-bleed artwork, crisp D-pad navigation, and universal streaming & library search.
 
-> **Latest Release:** Download [`HorizonTVLauncher-v2.5.16.apk`](https://github.com/darkside281/HorizonTVLauncher/releases/latest) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+> **Latest Release:** Download [`HorizonTVLauncher-v2.5.17.apk`](https://github.com/darkside281/HorizonTVLauncher/releases/latest) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 
 ---
 
@@ -59,7 +59,8 @@ Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shi
 - Powered by **Open-Meteo** (no API key required).
 - Configurable 1–7 day forecast, Celsius/Fahrenheit, 4 icon styles, compact/expanded sizing, and transparent overlay mode.
 
-### Backup, Restore & Reset
+### Backup, Restore, Reset & Built-In GitHub Updater
+- **GitHub Self-Updater**: Automatically checks GitHub Releases for newer versions on startup (or manually under **Customize → About**), shows release notes, and lets you choose **Update Now** (downloads and installs the APK directly on your TV) or **Not Now**.
 - **Portable JSON Backup & Restore** of your full launcher configuration (rows, themes, wallpapers, per-service configs, weather, search filters, and screensaver) for easy transfer across devices.
 - **Reset Launcher to Defaults** with two-step confirmation under **Customize → Launcher & Apps**.
 

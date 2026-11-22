@@ -82,6 +82,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.horizontv.launcher.R
 import com.horizontv.launcher.model.AccentPreset
 import com.horizontv.launcher.model.AppInfo
+import com.horizontv.launcher.model.AppUpdateInfo
 import com.horizontv.launcher.model.AppRow
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
@@ -201,6 +202,12 @@ fun SettingsOverlay(
   onPickScreensaverPhotos: () -> Unit,
   onClearScreensaverPhotos: () -> Unit,
   onOpenSystemScreensaverSettings: () -> Unit,
+  availableUpdate: AppUpdateInfo? = null,
+  isCheckingForUpdate: Boolean = false,
+  isDownloadingUpdate: Boolean = false,
+  updateStatusText: String? = null,
+  onCheckForUpdates: () -> Unit = {},
+  onOpenUpdateDialog: () -> Unit = {},
 ) {
   var activeCategory by remember { mutableStateOf(SettingsCategory.ROWS) }
   var activeSearchSection by remember { mutableStateOf(0) } // 0 = General, 1 = My Services, 2 = Streaming Apps
@@ -322,7 +329,11 @@ fun SettingsOverlay(
                     }
                     SettingsCategory.APPEARANCE -> LauncherPalettes.accentById(settings.accentId).name
                     SettingsCategory.SYSTEM -> if (isDefaultHome) "Default Active ✓" else "Set Default"
-                    SettingsCategory.ABOUT -> "v$appVersionName"
+                    SettingsCategory.ABOUT -> if (availableUpdate != null) {
+                      "Update: v${availableUpdate.versionName}"
+                    } else {
+                      "v$appVersionName"
+                    }
                   }
 
                   SidebarCategoryItem(
@@ -1910,6 +1921,71 @@ fun SettingsOverlay(
                     }
                   }
 
+                  SettingsFieldLabel("Software Updates (GitHub)")
+                  Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (availableUpdate != null) accent.primary.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f),
+                    border = BorderStroke(
+                      1.dp,
+                      if (availableUpdate != null) accent.primary.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.10f),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                  ) {
+                    Column(
+                      modifier = Modifier.padding(14.dp),
+                      verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                      Text(
+                        text = when {
+                          availableUpdate != null -> "New version available: v${availableUpdate.versionName}"
+                          isCheckingForUpdate -> "Checking GitHub Releases for updates…"
+                          !updateStatusText.isNullOrBlank() -> updateStatusText
+                          else -> "Checks github.com/darkside281/HorizonTVLauncher Releases for new APK versions."
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(
+                          fontWeight = if (availableUpdate != null) FontWeight.SemiBold else FontWeight.Normal,
+                        ),
+                        color = if (availableUpdate != null) accent.primary else Color.White.copy(alpha = 0.78f),
+                      )
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        if (availableUpdate != null) {
+                          SettingsActionChip(
+                            icon = Icons.Rounded.Download,
+                            label = if (isDownloadingUpdate) "Downloading…" else "Update to v${availableUpdate.versionName}",
+                            accent = accent,
+                            highlighted = true,
+                            onClick = onOpenUpdateDialog,
+                            modifier = Modifier
+                              .weight(1f)
+                              .focusRequester(rightPaneEntryRequester)
+                              .focusProperties { left = activeTabRequester },
+                          )
+                        }
+                        SettingsActionChip(
+                          icon = Icons.Rounded.Refresh,
+                          label = if (isCheckingForUpdate) "Checking…" else "Check for Updates",
+                          accent = accent,
+                          highlighted = false,
+                          onClick = onCheckForUpdates,
+                          modifier = Modifier
+                            .weight(1f)
+                            .then(
+                              if (availableUpdate == null) {
+                                Modifier
+                                  .focusRequester(rightPaneEntryRequester)
+                                  .focusProperties { left = activeTabRequester }
+                              } else {
+                                Modifier
+                              },
+                            ),
+                        )
+                      }
+                    }
+                  }
+
                   SettingsFieldLabel("What's New in v2.5")
                   Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -1998,7 +2074,6 @@ fun SettingsOverlay(
                     onClick = onOpenSelfAppInfo,
                     modifier = Modifier
                       .fillMaxWidth()
-                      .focusRequester(rightPaneEntryRequester)
                       .focusProperties { left = activeTabRequester },
                   )
                 }

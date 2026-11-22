@@ -651,6 +651,17 @@ data class LauncherSettings(
   }
 }
 
+data class AppUpdateInfo(
+  val versionName: String,
+  val tagName: String,
+  val releaseName: String,
+  val releaseNotes: String,
+  val apkUrl: String,
+  val apkFileName: String,
+  val apkSizeBytes: Long,
+  val htmlUrl: String,
+)
+
 data class LauncherUiState(
   val isLoading: Boolean = true,
   val isDefaultHome: Boolean = false,
@@ -693,6 +704,12 @@ data class LauncherUiState(
   val isScreensaverActive: Boolean = false,
   val screensaverPhotoSlide: ScreensaverPhotoSlide? = null,
   val screensaverPhotoCount: Int = 0,
+  val availableUpdate: AppUpdateInfo? = null,
+  val showUpdateDialog: Boolean = false,
+  val isCheckingForUpdate: Boolean = false,
+  val isDownloadingUpdate: Boolean = false,
+  val updateDownloadProgress: Float = 0f,
+  val updateStatusText: String? = null,
   val statusMessage: String? = null,
 ) {
   private val decoratedApps: List<AppInfo>

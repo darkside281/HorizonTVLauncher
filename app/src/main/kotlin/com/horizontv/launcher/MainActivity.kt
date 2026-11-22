@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.horizontv.launcher.data.AndroidScreensaverPhotoSource
 import com.horizontv.launcher.data.AppRepository
+import com.horizontv.launcher.data.GitHubUpdater
 import com.horizontv.launcher.data.LauncherPreferences
 import com.horizontv.launcher.ui.LauncherScreen
 import com.horizontv.launcher.ui.LauncherViewModel
@@ -37,10 +38,15 @@ class MainActivity : ComponentActivity() {
   private var homeFocusTrigger by mutableIntStateOf(0)
 
   private val viewModel: LauncherViewModel by viewModels {
+    val installedVersion = runCatching {
+      packageManager.getPackageInfo(packageName, 0).versionName ?: "2.5.17"
+    }.getOrDefault("2.5.17")
     LauncherViewModel.Factory(
       appDataSource = AppRepository(applicationContext),
       settingsStore = LauncherPreferences(applicationContext),
       screensaverPhotoSource = AndroidScreensaverPhotoSource(applicationContext),
+      appUpdateDataSource = GitHubUpdater(applicationContext),
+      currentVersionName = installedVersion,
     )
   }
 
@@ -223,6 +229,7 @@ class MainActivity : ComponentActivity() {
       BackHandler(enabled = true) {
         when {
           state.isScreensaverActive -> viewModel.stopScreensaver()
+          state.showUpdateDialog -> viewModel.dismissUpdateDialog()
           state.isWeatherDialogOpen -> viewModel.closeWeatherSetup()
           state.isAddingSubreddit -> viewModel.closeAddSubredditDialog()
           state.setupProviderDialog != null -> viewModel.closeJellyfinSetup()
@@ -380,6 +387,10 @@ class MainActivity : ComponentActivity() {
           },
           onClearScreensaverPhotos = viewModel::clearScreensaverPhotos,
           onOpenSystemScreensaverSettings = ::openSystemScreensaverSettings,
+          onCheckForUpdates = { viewModel.checkForUpdates(manual = true) },
+          onOpenUpdateDialog = viewModel::openUpdateDialog,
+          onDismissUpdateDialog = viewModel::dismissUpdateDialog,
+          onInstallUpdate = viewModel::installAvailableUpdate,
           homeFocusTrigger = homeFocusTrigger,
           appVersionName = runCatching {
             packageManager.getPackageInfo(packageName, 0).versionName ?: "2.1.0"

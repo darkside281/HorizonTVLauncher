@@ -91,6 +91,7 @@ import com.horizontv.launcher.ui.components.AddFavoriteTile
 import com.horizontv.launcher.ui.components.AmbientBackground
 import com.horizontv.launcher.ui.components.AppActionDialog
 import com.horizontv.launcher.ui.components.AppGridTile
+import com.horizontv.launcher.ui.components.AppUpdateDialog
 import com.horizontv.launcher.ui.components.FavoriteBannerCard
 import com.horizontv.launcher.ui.components.JellyfinSetupDialog
 import com.horizontv.launcher.ui.components.LauncherTopBar
@@ -230,6 +231,10 @@ fun LauncherScreen(
   onPickScreensaverPhotos: () -> Unit,
   onClearScreensaverPhotos: () -> Unit,
   onOpenSystemScreensaverSettings: () -> Unit,
+  onCheckForUpdates: () -> Unit = {},
+  onOpenUpdateDialog: () -> Unit = {},
+  onDismissUpdateDialog: () -> Unit = {},
+  onInstallUpdate: () -> Unit = {},
   homeFocusTrigger: Int = 0,
   appVersionName: String = "2.1.0",
   appVersionCode: Int = 24,
@@ -1188,6 +1193,25 @@ fun LauncherScreen(
         onPickScreensaverPhotos = onPickScreensaverPhotos,
         onClearScreensaverPhotos = onClearScreensaverPhotos,
         onOpenSystemScreensaverSettings = onOpenSystemScreensaverSettings,
+        availableUpdate = state.availableUpdate,
+        isCheckingForUpdate = state.isCheckingForUpdate,
+        isDownloadingUpdate = state.isDownloadingUpdate,
+        updateStatusText = state.updateStatusText,
+        onCheckForUpdates = onCheckForUpdates,
+        onOpenUpdateDialog = onOpenUpdateDialog,
+      )
+    }
+
+    if (state.showUpdateDialog && state.availableUpdate != null) {
+      AppUpdateDialog(
+        currentVersionName = appVersionName,
+        update = state.availableUpdate,
+        isDownloading = state.isDownloadingUpdate,
+        downloadProgress = state.updateDownloadProgress,
+        statusText = state.updateStatusText,
+        accent = accent,
+        onUpdateNow = onInstallUpdate,
+        onDismiss = onDismissUpdateDialog,
       )
     }
 
