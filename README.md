@@ -1,6 +1,12 @@
-# Horizon TV Launcher
+<p align="center">
+  <img src="docs/logo.svg" alt="Horizon TV Launcher Logo" width="112" height="112" />
+</p>
 
-A clean, fast, ad-free **Android TV / Nvidia Shield home launcher** built with Jetpack Compose — designed for living-room full-bleed artwork, crisp D-pad navigation, and universal streaming & library search.
+<h1 align="center">Horizon TV Launcher</h1>
+
+<p align="center">
+  A clean, fast, ad-free <strong>Android TV / Nvidia Shield home launcher</strong> built with Jetpack Compose — designed for living-room full-bleed artwork, crisp D-pad navigation, and universal streaming &amp; library search.
+</p>
 
 > **Latest Release:** Download [`HorizonTVLauncher-v2.5.17.apk`](https://github.com/darkside281/HorizonTVLauncher/releases/latest) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 
