@@ -213,20 +213,23 @@ adb -s <TARGET_IP>:5555 shell am start -n com.horizontv.launcher/.MainActivity -
 ### Standard Method
 Open **Customize → Launcher & Apps → Set Default Home Launcher** and select **Horizon TV Launcher**.
 
-### Nvidia Shield (Android TV 11) Method
-On Nvidia Shield TV running Android TV 11, Google's stock launcher (`com.google.android.tvlauncher`) holds higher system priority. To make the **Home** button always open Horizon:
+### Nvidia Shield & Android TV (Android TV 11+) Method
+On Android TV devices where Google's stock launcher (`com.google.android.tvlauncher`) holds higher system priority, disable it via ADB so the **Home** button always opens Horizon:
 
 ```bash
-adb -s <SHIELD_IP>:5555 shell pm disable-user --user 0 com.google.android.tvlauncher
-adb -s <SHIELD_IP>:5555 shell cmd package set-home-activity com.horizontv.launcher/.MainActivity
+adb -s <DEVICE_IP>:5555 shell pm disable-user --user 0 com.google.android.tvlauncher
+adb -s <DEVICE_IP>:5555 shell cmd package set-home-activity com.horizontv.launcher/.MainActivity
 ```
 
-To revert back to the stock Nvidia Shield launcher at any time:
+### Google TV (Chromecast, Onn 4K, Google TV Streamer, TCL/Sony/Hisense Google TV)
+On Google TV devices, disable the Google TV launcher package (`com.google.android.apps.tv.launcherx`) instead:
 
 ```bash
-adb -s <SHIELD_IP>:5555 shell pm enable com.google.android.tvlauncher
-adb -s <SHIELD_IP>:5555 shell cmd package set-home-activity com.google.android.tvlauncher/.MainActivity
+adb -s <DEVICE_IP>:5555 shell pm disable-user --user 0 com.google.android.apps.tv.launcherx
+adb -s <DEVICE_IP>:5555 shell cmd package set-home-activity com.horizontv.launcher/.MainActivity
 ```
+
+To revert back to the stock launcher at any time, re-enable the stock package with `pm enable <package>` and set it back as the home activity.
 
 ---
 

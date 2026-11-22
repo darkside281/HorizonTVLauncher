@@ -74,17 +74,39 @@ For detailed setup instructions, see [USER_GUIDE.md](USER_GUIDE.md).
 
 ---
 
+## Compatible Devices
+
+Horizon TV Launcher targets **Android 7.0+ (API 24)** up to **Android 16**, requires **no Google Play Services**, scales cleanly across **720p, 1080p, and 4K**, and ships as a single universal APK (**ARM64, ARM32, and x86_64**).
+
+- **Nvidia Shield TV** (2015, 2017, 2019, Pro) — *tested & verified*
+- **Google TV devices** (Chromecast with Google TV, Google TV Streamer, Onn 4K / 4K Pro)
+- **Android TV boxes & sticks** (Xiaomi Mi Box / TV Stick, Mecool, Homatics, generic Android TV boxes)
+- **Smart TVs with Android TV / Google TV** (Sony Bravia, TCL, Hisense, Philips)
+- **Waydroid** (Linux x86_64 / ARM64) — *tested & verified*
+- **Amazon Fire TV (Fire OS 7+)** — app runs, though newer Fire OS versions restrict replacing the Home button
+
+> **Notes:**
+> - **Where to Watch (JustWatch)** currently queries **UK (`GB`)** streaming availability; all other features (apps, Jellyfin/Plex/Emby/TMDB/Reddit wallpapers, weather, screensaver) work worldwide.
+> - Devices without a built-in system file picker (some Google TV sticks) can still import/export backups via ADB (see [USER_GUIDE.md](USER_GUIDE.md)).
+
+---
+
 ## Installation
 
-1. Download the latest APK (`HorizonTVLauncher-v2.5.16.apk`) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
-2. Sideload it onto your Nvidia Shield / Android TV device (via USB, file manager, or ADB):
+1. Download the latest APK (`HorizonTVLauncher-v2.5.17.apk`) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+2. Sideload it onto your Android TV / Google TV device (via USB, file manager, or ADB):
    ```bash
-   adb install -r HorizonTVLauncher-v2.5.16.apk
+   adb install -r HorizonTVLauncher-v2.5.17.apk
    ```
 3. Open **Horizon TV Launcher** → **Customize → Launcher & Apps → Set as Default Home**.
-   - On Nvidia Shield, you can also disable the stock launcher via ADB if desired:
+   - **Android TV (Nvidia Shield, Sony, etc.)** — optionally disable the stock launcher via ADB so the Home button always opens Horizon:
      ```bash
      adb shell pm disable-user --user 0 com.google.android.tvlauncher
+     adb shell cmd package set-home-activity com.horizontv.launcher/.MainActivity
+     ```
+   - **Google TV (Chromecast, Onn, Google TV Streamer, etc.)** — disable the Google TV launcher package instead:
+     ```bash
+     adb shell pm disable-user --user 0 com.google.android.apps.tv.launcherx
      adb shell cmd package set-home-activity com.horizontv.launcher/.MainActivity
      ```
 
