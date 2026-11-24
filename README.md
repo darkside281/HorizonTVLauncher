@@ -8,7 +8,7 @@
   A clean, fast, ad-free <strong>Android TV / Nvidia Shield home launcher</strong> built with Jetpack Compose — designed for living-room full-bleed artwork, crisp D-pad navigation, and universal streaming &amp; library search.
 </p>
 
-> **Latest Release:** Download [`HorizonTVLauncher-v2.5.20.apk`](https://github.com/darkside281/HorizonTVLauncher/releases/latest) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+> 
 
 ---
 
