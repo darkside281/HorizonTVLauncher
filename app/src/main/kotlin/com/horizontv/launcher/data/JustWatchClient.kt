@@ -147,6 +147,11 @@ class JustWatchClient : StreamingSearchDataSource {
       if (id.isEmpty() || title.isEmpty()) continue
 
       val year = content.optInt("originalReleaseYear", 0).takeIf { it > 1800 }
+      val shortDescription = if (!content.isNull("shortDescription")) {
+        content.optString("shortDescription", "").trim().replace(Regex("\\s+"), " ").ifEmpty { null }
+      } else {
+        null
+      }
       val ageCertification = if (!content.isNull("ageCertification")) {
         content.optString("ageCertification", "").trim().ifEmpty { null }
       } else {
@@ -227,6 +232,7 @@ class JustWatchClient : StreamingSearchDataSource {
           title = title,
           objectType = objectType,
           year = year,
+          shortDescription = shortDescription,
           ageCertification = ageCertification,
           imdbScore = imdbScore,
           tomatoMeter = tomatoMeter,
@@ -401,6 +407,7 @@ class JustWatchClient : StreamingSearchDataSource {
               content(country: ${'$'}country, language: ${'$'}language) {
                 title
                 originalReleaseYear
+                shortDescription
                 ageCertification
                 posterUrl
                 scoring {

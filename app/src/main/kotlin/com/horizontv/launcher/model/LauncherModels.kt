@@ -75,6 +75,7 @@ data class StreamingSearchItem(
   val title: String,
   val objectType: String,
   val year: Int?,
+  val shortDescription: String? = null,
   val ageCertification: String? = null,
   val imdbScore: Float? = null,
   val tomatoMeter: Int? = null,
@@ -139,6 +140,7 @@ enum class JustWatchServicePreset(
 
   // 2. Amazon Prime Video Channels (opened directly via Prime Video)
   PARAMOUNT_PRIME("paramount_prime", "Paramount+ (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("app", "pma"), listOf("paramount+ (prime)", "paramount+ amazon", "paramount plus amazon"), isPrimeChannel = true),
+  ITVX_PRIME("itvx_prime", "ITVX (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("itva", "itpa"), listOf("itvx (prime)", "itvx amazon", "itv amazon"), isPrimeChannel = true),
   MGM_PRIME("mgm_prime", "MGM+ (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("mgp", "mga", "mgm"), listOf("mgm+ (prime)", "mgm plus amazon", "mgm+ amazon", "mgm amazon"), isPrimeChannel = true),
   CRUNCHYROLL_PRIME("crunchyroll_prime", "Crunchyroll (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("cra"), listOf("crunchyroll (prime)", "crunchyroll amazon"), isPrimeChannel = true),
   DISCOVERY_PRIME("discovery_prime", "Discovery+ (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("adp", "dca"), listOf("discovery+ (prime)", "discovery+ amazon"), isPrimeChannel = true),
@@ -160,7 +162,7 @@ enum class JustWatchServicePreset(
     val short = offer.shortName.trim().lowercase()
     val name = offer.providerName.trim().lowercase()
     val offerIsPrimeChannel = name.endsWith("(prime)") || name.contains("amazon channel") ||
-      short in setOf("app", "pma", "mgp", "mga", "cra", "adp", "dca", "asd", "amb", "abf", "aac", "ahy", "cac", "soa", "arr", "aho", "sco", "hda", "hil", "dov", "pbm", "mqa", "mha")
+      short in setOf("app", "pma", "itva", "itpa", "mgp", "mga", "cra", "adp", "dca", "asd", "amb", "abf", "aac", "ahy", "cac", "soa", "arr", "aho", "sco", "hda", "hil", "dov", "pbm", "mqa", "mha")
 
     if (isPrimeChannel != offerIsPrimeChannel) return false
     if (short.isNotEmpty() && short in shortNames) return true
@@ -843,8 +845,42 @@ data class LauncherUiState(
       } else {
         emptyList()
       }
+      val includeItvxPrime = JustWatchServicePreset.ITVX_PRIME.id in settings.justWatchServices
       return streamingSearchResults.mapNotNull { item ->
-        val filteredOffers = item.offers.filter { offer ->
+        val baseOffers = if (includeItvxPrime) {
+          val hasItvx = item.offers.any { offer ->
+            val short = offer.shortName.trim().lowercase()
+            short == "itv" || short == "itp" || offer.providerName.equals("ITVX", ignoreCase = true)
+          }
+          val hasNativeItvxPrime = item.offers.any { offer ->
+            JustWatchServicePreset.ITVX_PRIME.matches(offer)
+          }
+          if (hasItvx && !hasNativeItvxPrime) {
+            val amazonOffer = item.offers.firstOrNull { offer ->
+              (offer.deeplinkUrl?.contains("watch.amazon.", ignoreCase = true) == true) ||
+                (offer.webUrl?.contains("watch.amazon.", ignoreCase = true) == true)
+            }
+            val encodedTitle = java.net.URLEncoder.encode(item.title, "UTF-8")
+            val primeDeepLink = amazonOffer?.deeplinkUrl
+              ?: "intent://watch.amazon.co.uk/search?phrase=$encodedTitle#Intent;package=com.amazon.amazonvideo.livingroom;scheme=https;end"
+            val primeWebUrl = amazonOffer?.webUrl
+              ?: "https://www.amazon.co.uk/s?k=$encodedTitle&i=instant-video"
+            val syntheticItvxPrime = StreamingOffer(
+              providerName = "ITVX (Prime)",
+              shortName = "itva",
+              monetizationType = "FLATRATE",
+              deeplinkUrl = primeDeepLink,
+              webUrl = primeWebUrl,
+            )
+            listOf(syntheticItvxPrime) + item.offers
+          } else {
+            item.offers
+          }
+        } else {
+          item.offers
+        }
+
+        val filteredOffers = baseOffers.filter { offer ->
           val matchesMonetization = settings.justWatchIncludeRentBuy || offer.isIncluded
           val matchesService = !settings.justWatchFilterServices ||
             activePresets.any { preset -> preset.matches(offer) }

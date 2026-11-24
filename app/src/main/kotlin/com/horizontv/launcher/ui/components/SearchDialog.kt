@@ -1078,8 +1078,8 @@ private fun StreamingSearchResultCard(
       // Poster thumbnail
       Box(
         modifier = Modifier
-          .width(56.dp)
-          .height(82.dp)
+          .width(64.dp)
+          .height(94.dp)
           .clip(RoundedCornerShape(10.dp))
           .background(
             Brush.linearGradient(
@@ -1192,6 +1192,16 @@ private fun StreamingSearchResultCard(
           }
         }
 
+        if (!item.shortDescription.isNullOrBlank()) {
+          Text(
+            text = item.shortDescription,
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.72f),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+          )
+        }
+
         if (item.offers.isEmpty()) {
           var isEmptyPillFocused by remember { mutableStateOf(false) }
           Surface(
@@ -1210,7 +1220,7 @@ private fun StreamingSearchResultCard(
               text = if (isServiceFilterActive) {
                 "Not currently on your selected streaming services"
               } else {
-                "Not currently listed on UK streaming services"
+                "Not currently listed on streaming services"
               },
               style = MaterialTheme.typography.labelMedium,
               color = if (isEmptyPillFocused) Color.White else Color.White.copy(alpha = 0.50f),
