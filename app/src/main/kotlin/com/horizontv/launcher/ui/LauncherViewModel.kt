@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.horizontv.launcher.data.AppUpdateDataSource
+import com.horizontv.launcher.data.GitHubUpdater
 import com.horizontv.launcher.data.InstalledAppsDataSource
 import com.horizontv.launcher.data.JellyfinClient
 import com.horizontv.launcher.data.JellyfinDataSource
@@ -31,6 +32,7 @@ import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JellyfinSearchItem
 import com.horizontv.launcher.model.JellyfinSlide
+import com.horizontv.launcher.model.JustWatchRegion
 import com.horizontv.launcher.model.JustWatchServicePreset
 import com.horizontv.launcher.model.LauncherSettings
 import com.horizontv.launcher.model.LauncherUiState
@@ -41,6 +43,7 @@ import com.horizontv.launcher.model.ScreensaverMode
 import com.horizontv.launcher.model.SearchProviderFilter
 import com.horizontv.launcher.model.StreamingOffer
 import com.horizontv.launcher.model.TvInputSource
+import com.horizontv.launcher.model.UpdateCheckSchedule
 import com.horizontv.launcher.model.WeatherForecastSize
 import com.horizontv.launcher.model.WeatherLocation
 import java.util.UUID
@@ -111,7 +114,15 @@ class LauncherViewModel(
     if (appUpdateDataSource != null) {
       viewModelScope.launch {
         delay(4_000L)
-        checkForUpdates(manual = false)
+        val s = _uiState.value.settings
+        val shouldAutoCheck = when (s.activeUpdateCheckSchedule) {
+          UpdateCheckSchedule.MANUAL -> false
+          UpdateCheckSchedule.WEEKLY -> (System.currentTimeMillis() - s.lastUpdateCheckMillis) >= 7L * 24L * 60L * 60L * 1000L
+          UpdateCheckSchedule.AUTOMATIC -> true
+        }
+        if (shouldAutoCheck) {
+          checkForUpdates(manual = false)
+        }
       }
     }
   }
@@ -1350,7 +1361,7 @@ class LauncherViewModel(
         delay(350L)
         val res = streamingSearchDataSource.searchTitlesPage(
           query = trimmed,
-          countryCode = "GB",
+          countryCode = s.activeJustWatchRegion.code,
           limit = 8,
           afterCursor = null,
         )
@@ -1415,7 +1426,7 @@ class LauncherViewModel(
       _uiState.update { it.copy(isLoadingMoreStreaming = true) }
       val res = streamingSearchDataSource.searchTitlesPage(
         query = trimmed,
-        countryCode = "GB",
+        countryCode = _uiState.value.settings.activeJustWatchRegion.code,
         limit = 8,
         afterCursor = cursor,
       )
@@ -1704,6 +1715,23 @@ class LauncherViewModel(
     showStatus(if (next) "Hiding titles without offers on your services" else "Showing all matching titles")
   }
 
+  fun setJustWatchRegion(region: JustWatchRegion) {
+    updateSettings { it.copy(justWatchRegion = region.code) }
+    showStatus("Region set to ${region.label} (${region.code})")
+  }
+
+  fun toggleJustWatchShowRottenTomatoes() {
+    val next = !_uiState.value.settings.justWatchShowRottenTomatoes
+    updateSettings { it.copy(justWatchShowRottenTomatoes = next) }
+    showStatus(if (next) "Rotten Tomatoes ratings shown" else "Rotten Tomatoes ratings hidden")
+  }
+
+  fun toggleJustWatchShowAgeRating() {
+    val next = !_uiState.value.settings.justWatchShowAgeRating
+    updateSettings { it.copy(justWatchShowAgeRating = next) }
+    showStatus(if (next) "Age ratings shown" else "Age ratings hidden")
+  }
+
   fun setGridColumns(columns: Int) {
     updateSettings { it.copy(gridColumns = columns.coerceIn(4, 6)) }
   }
@@ -1902,19 +1930,29 @@ class LauncherViewModel(
 
   // --- GitHub Self-Updater ---
 
-  fun checkForUpdates(manual: Boolean = true) {
+  fun setUpdateCheckSchedule(schedule: UpdateCheckSchedule) {
+    updateSettings { it.copy(updateCheckSchedule = schedule.id) }
+    showStatus("Update checks: ${schedule.label}")
+  }
+
+  fun checkForUpdates(manual: Boolean = true, showDialogIfAvailable: Boolean = true) {
     val updater = appUpdateDataSource ?: return
     if (_uiState.value.isCheckingForUpdate || _uiState.value.isDownloadingUpdate) return
     viewModelScope.launch {
       _uiState.update { it.copy(isCheckingForUpdate = true, updateStatusText = null) }
-      updater.checkForUpdate(currentVersionName).fold(
-        onSuccess = { update ->
-          if (update != null) {
+      updater.fetchLatestRelease(currentVersionName).fold(
+        onSuccess = { release ->
+          updateSettings { it.copy(lastUpdateCheckMillis = System.currentTimeMillis()) }
+          val isNewer = release != null &&
+            release.apkUrl.isNotEmpty() &&
+            GitHubUpdater.isVersionNewer(release.versionName, currentVersionName)
+          if (isNewer && release != null) {
             _uiState.update {
               it.copy(
                 isCheckingForUpdate = false,
-                availableUpdate = update,
-                showUpdateDialog = true,
+                latestRelease = release,
+                availableUpdate = release,
+                showUpdateDialog = showDialogIfAvailable,
                 updateStatusText = null,
               )
             }
@@ -1922,6 +1960,7 @@ class LauncherViewModel(
             _uiState.update {
               it.copy(
                 isCheckingForUpdate = false,
+                latestRelease = release ?: it.latestRelease,
                 availableUpdate = null,
                 showUpdateDialog = false,
                 updateStatusText = if (manual) "You're up to date (v$currentVersionName)" else null,
@@ -1944,6 +1983,12 @@ class LauncherViewModel(
           }
         },
       )
+    }
+  }
+
+  fun loadLatestReleaseInfoIfNeeded() {
+    if (_uiState.value.latestRelease == null && !_uiState.value.isCheckingForUpdate) {
+      checkForUpdates(manual = false, showDialogIfAvailable = false)
     }
   }
 

@@ -5,10 +5,12 @@ import android.content.SharedPreferences
 import com.horizontv.launcher.model.AppRow
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.JellyfinMediaType
+import com.horizontv.launcher.model.JustWatchRegion
 import com.horizontv.launcher.model.LauncherSettings
 import com.horizontv.launcher.model.MediaWallpaperProvider
 import com.horizontv.launcher.model.RedditSort
 import com.horizontv.launcher.model.ScreensaverMode
+import com.horizontv.launcher.model.UpdateCheckSchedule
 import com.horizontv.launcher.model.WallpaperProviderConfig
 import com.horizontv.launcher.model.WeatherForecastSize
 import org.json.JSONArray
@@ -68,6 +70,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("showTileTitles", settings.showTileTitles)
     root.put("showTvInputsButton", settings.showTvInputsButton)
     root.put("lockHomeLayout", settings.lockHomeLayout)
+    root.put("updateCheckSchedule", settings.updateCheckSchedule)
     root.put("homeTileSize", settings.homeTileSize)
     val disabledSearchArr = JSONArray()
     settings.disabledSearchProviders.sorted().forEach { disabledSearchArr.put(it) }
@@ -78,6 +81,9 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("justWatchServices", jwServicesArr)
     root.put("justWatchIncludeRentBuy", settings.justWatchIncludeRentBuy)
     root.put("justWatchHideUnmatchedTitles", settings.justWatchHideUnmatchedTitles)
+    root.put("justWatchRegion", settings.justWatchRegion)
+    root.put("justWatchShowRottenTomatoes", settings.justWatchShowRottenTomatoes)
+    root.put("justWatchShowAgeRating", settings.justWatchShowAgeRating)
     root.put("gridColumns", settings.gridColumns)
 
     val jellyfinObj = JSONObject().apply {
@@ -251,6 +257,9 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       showTileTitles = root.optBoolean("showTileTitles", existing.showTileTitles),
       showTvInputsButton = root.optBoolean("showTvInputsButton", existing.showTvInputsButton),
       lockHomeLayout = root.optBoolean("lockHomeLayout", existing.lockHomeLayout),
+      updateCheckSchedule = UpdateCheckSchedule.fromId(
+        root.optString("updateCheckSchedule", existing.updateCheckSchedule),
+      ).id,
       homeTileSize = HomeTileSize.fromId(
         root.optString("homeTileSize", existing.homeTileSize),
       ).id,
@@ -283,6 +292,9 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       },
       justWatchIncludeRentBuy = root.optBoolean("justWatchIncludeRentBuy", existing.justWatchIncludeRentBuy),
       justWatchHideUnmatchedTitles = root.optBoolean("justWatchHideUnmatchedTitles", existing.justWatchHideUnmatchedTitles),
+      justWatchRegion = JustWatchRegion.fromCode(root.optString("justWatchRegion", existing.justWatchRegion)).code,
+      justWatchShowRottenTomatoes = root.optBoolean("justWatchShowRottenTomatoes", existing.justWatchShowRottenTomatoes),
+      justWatchShowAgeRating = root.optBoolean("justWatchShowAgeRating", existing.justWatchShowAgeRating),
       gridColumns = root.optInt("gridColumns", existing.gridColumns).coerceIn(4, 6),
       wallpaperProvider = MediaWallpaperProvider.fromId(
         jf?.optString("provider", existing.wallpaperProvider) ?: existing.wallpaperProvider,
@@ -517,6 +529,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
         ?: LauncherSettings.DEFAULT_JUSTWATCH_SERVICES,
       justWatchIncludeRentBuy = prefs.getBoolean(KEY_JW_INCLUDE_RENT_BUY, true),
       justWatchHideUnmatchedTitles = prefs.getBoolean(KEY_JW_HIDE_UNMATCHED, false),
+      justWatchRegion = JustWatchRegion.fromCode(prefs.getString(KEY_JW_REGION, JustWatchRegion.GB.code)).code,
+      justWatchShowRottenTomatoes = prefs.getBoolean(KEY_JW_SHOW_RT, true),
+      justWatchShowAgeRating = prefs.getBoolean(KEY_JW_SHOW_AGE_RATING, true),
       gridColumns = prefs.getInt(KEY_GRID_COLUMNS, 5).coerceIn(4, 6),
       hasInitializedFavorites = prefs.getBoolean(KEY_INIT_FAVORITES, false),
       screensaverEnabled = prefs.getBoolean(KEY_SS_ENABLED, false),
@@ -534,6 +549,10 @@ class LauncherPreferences(context: Context) : SettingsStore {
       screensaverAmbientCycle = prefs.getBoolean(KEY_SS_AMBIENT_CYCLE, true),
       screensaverPhotoFolderUri = prefs.getString(KEY_SS_PHOTO_FOLDER, null),
       screensaverPhotoUris = decodeStringList(prefs.getString(KEY_SS_PHOTO_URIS, null)),
+      updateCheckSchedule = UpdateCheckSchedule.fromId(
+        prefs.getString(KEY_UPDATE_CHECK_SCHEDULE, UpdateCheckSchedule.WEEKLY.id),
+      ).id,
+      lastUpdateCheckMillis = prefs.getLong(KEY_LAST_UPDATE_CHECK_MS, 0L),
     )
   }
 
@@ -601,6 +620,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putStringSet(KEY_JW_SERVICES, settings.justWatchServices)
       .putBoolean(KEY_JW_INCLUDE_RENT_BUY, settings.justWatchIncludeRentBuy)
       .putBoolean(KEY_JW_HIDE_UNMATCHED, settings.justWatchHideUnmatchedTitles)
+      .putString(KEY_JW_REGION, settings.justWatchRegion)
+      .putBoolean(KEY_JW_SHOW_RT, settings.justWatchShowRottenTomatoes)
+      .putBoolean(KEY_JW_SHOW_AGE_RATING, settings.justWatchShowAgeRating)
       .putInt(KEY_GRID_COLUMNS, settings.gridColumns)
       .putBoolean(KEY_INIT_FAVORITES, settings.hasInitializedFavorites)
       .putBoolean(KEY_SS_ENABLED, settings.screensaverEnabled)
@@ -616,6 +638,8 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putBoolean(KEY_SS_AMBIENT_CYCLE, settings.screensaverAmbientCycle)
       .putString(KEY_SS_PHOTO_FOLDER, settings.screensaverPhotoFolderUri)
       .putString(KEY_SS_PHOTO_URIS, encodeStringList(settings.screensaverPhotoUris))
+      .putString(KEY_UPDATE_CHECK_SCHEDULE, settings.updateCheckSchedule)
+      .putLong(KEY_LAST_UPDATE_CHECK_MS, settings.lastUpdateCheckMillis)
       .apply()
   }
 
@@ -795,6 +819,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_JW_SERVICES = "justwatch_services_v2"
     private const val KEY_JW_INCLUDE_RENT_BUY = "justwatch_include_rent_buy"
     private const val KEY_JW_HIDE_UNMATCHED = "justwatch_hide_unmatched_titles"
+    private const val KEY_JW_REGION = "justwatch_region"
+    private const val KEY_JW_SHOW_RT = "justwatch_show_rotten_tomatoes"
+    private const val KEY_JW_SHOW_AGE_RATING = "justwatch_show_age_rating"
     private const val KEY_GRID_COLUMNS = "grid_columns"
     private const val KEY_INIT_FAVORITES = "has_initialized_favorites"
     private const val KEY_SS_ENABLED = "screensaver_enabled"
@@ -810,6 +837,8 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_SS_AMBIENT_CYCLE = "screensaver_ambient_cycle"
     private const val KEY_SS_PHOTO_FOLDER = "screensaver_photo_folder_uri"
     private const val KEY_SS_PHOTO_URIS = "screensaver_photo_uris_json"
+    private const val KEY_UPDATE_CHECK_SCHEDULE = "update_check_schedule"
+    private const val KEY_LAST_UPDATE_CHECK_MS = "last_update_check_millis"
   }
 }
 

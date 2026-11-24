@@ -12,8 +12,8 @@ android {
     applicationId = "com.horizontv.launcher"
     minSdk = 24
     targetSdk = 36
-    versionCode = 64
-    versionName = "2.5.20"
+    versionCode = 70
+    versionName = "2.5.26"
   }
 
   buildTypes {

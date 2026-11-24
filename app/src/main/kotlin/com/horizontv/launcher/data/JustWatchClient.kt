@@ -147,10 +147,22 @@ class JustWatchClient : StreamingSearchDataSource {
       if (id.isEmpty() || title.isEmpty()) continue
 
       val year = content.optInt("originalReleaseYear", 0).takeIf { it > 1800 }
-      val imdbScore = content.optJSONObject("scoring")
+      val ageCertification = if (!content.isNull("ageCertification")) {
+        content.optString("ageCertification", "").trim().ifEmpty { null }
+      } else {
+        null
+      }
+      val scoring = content.optJSONObject("scoring")
+      val imdbScore = scoring
         ?.optDouble("imdbScore", Double.NaN)
         ?.takeIf { !it.isNaN() && it > 0.0 }
         ?.toFloat()
+      val tomatoMeter = if (scoring != null && !scoring.isNull("tomatoMeter")) {
+        scoring.optInt("tomatoMeter", -1).takeIf { it in 0..100 }
+      } else {
+        null
+      }
+      val certifiedFresh = scoring?.optBoolean("certifiedFresh", false) ?: false
       val rawPoster = content.optString("posterUrl", "").trim()
       val posterUrl = if (rawPoster.isNotEmpty()) {
         val resolved = rawPoster
@@ -215,7 +227,10 @@ class JustWatchClient : StreamingSearchDataSource {
           title = title,
           objectType = objectType,
           year = year,
+          ageCertification = ageCertification,
           imdbScore = imdbScore,
+          tomatoMeter = tomatoMeter,
+          certifiedFresh = certifiedFresh,
           posterUrl = posterUrl,
           offers = sortedOffers,
         ),
@@ -246,7 +261,7 @@ class JustWatchClient : StreamingSearchDataSource {
       lower == "bfi player amazon channel" || short == "abf" -> "BFI Player (Prime)"
       lower == "curzon amazon channel" || short == "cac" -> "Curzon (Prime)"
       lower == "studiocanal presents amazon channel" || short == "soa" -> "Studiocanal (Prime)"
-      lower == "hbo max amazon channel" || short == "aho" -> "Max (Prime)"
+      lower == "hbo max amazon channel" || lower == "max amazon channel" || short == "aho" -> "HBO Max (Prime)"
       lower.endsWith(" amazon channel") -> {
         val prefix = trimmed.substring(0, trimmed.length - " amazon channel".length).trim()
         "$prefix (Prime)"
@@ -386,8 +401,13 @@ class JustWatchClient : StreamingSearchDataSource {
               content(country: ${'$'}country, language: ${'$'}language) {
                 title
                 originalReleaseYear
+                ageCertification
                 posterUrl
-                scoring { imdbScore }
+                scoring {
+                  imdbScore
+                  tomatoMeter
+                  certifiedFresh
+                }
               }
               offers(country: ${'$'}country, platform: ANDROID_TV) {
                 monetizationType

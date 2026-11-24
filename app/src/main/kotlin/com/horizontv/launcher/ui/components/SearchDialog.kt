@@ -104,6 +104,9 @@ fun UniversalSearchDialog(
   streamingHasMore: Boolean = false,
   streamingError: String?,
   isServiceFilterActive: Boolean = false,
+  justWatchRegionCode: String = "GB",
+  showRottenTomatoes: Boolean = true,
+  showAgeRating: Boolean = true,
   externalSearchProviders: List<ExternalSearchProvider>,
   appsProviderEnabled: Boolean,
   jellyfinProviderEnabled: Boolean,
@@ -454,7 +457,7 @@ fun UniversalSearchDialog(
               Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SearchSectionHeader(
                   icon = Icons.Rounded.Tv,
-                  title = "Where to Watch (JustWatch UK)",
+                  title = "Where to Watch (JustWatch $justWatchRegionCode)",
                   trailing = if (isSearchingStreaming) "Searching…" else "${streamingResults.size}",
                   accent = accent,
                 )
@@ -514,6 +517,8 @@ fun UniversalSearchDialog(
                             item = item,
                             accent = accent,
                             isServiceFilterActive = isServiceFilterActive,
+                            showRottenTomatoes = showRottenTomatoes,
+                            showAgeRating = showAgeRating,
                             onOpenOffer = onOpenStreamingOffer,
                             upTarget = if (idx == 0) firstFilterRequester else null,
                             onNavigateUp = if (idx == 0) ({ moveFocusUpToFilters() }) else null,
@@ -1035,6 +1040,8 @@ private fun StreamingSearchResultCard(
   item: StreamingSearchItem,
   accent: AccentPreset,
   isServiceFilterActive: Boolean = false,
+  showRottenTomatoes: Boolean = true,
+  showAgeRating: Boolean = true,
   onOpenOffer: (StreamingOffer) -> Unit,
   upTarget: FocusRequester? = null,
   onNavigateUp: (() -> Unit)? = null,
@@ -1132,6 +1139,20 @@ private fun StreamingSearchResultCard(
               color = Color.White.copy(alpha = 0.65f),
             )
           }
+          if (showAgeRating && !item.ageCertification.isNullOrBlank()) {
+            Surface(
+              shape = RoundedCornerShape(5.dp),
+              color = Color.White.copy(alpha = 0.08f),
+              border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f)),
+            ) {
+              Text(
+                text = item.ageCertification,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                color = Color.White.copy(alpha = 0.88f),
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+              )
+            }
+          }
           if (item.imdbScore != null) {
             Row(
               verticalAlignment = Alignment.CenterVertically,
@@ -1147,6 +1168,25 @@ private fun StreamingSearchResultCard(
                 text = String.format(Locale.US, "%.1f", item.imdbScore),
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White.copy(alpha = 0.80f),
+              )
+            }
+          }
+          if (showRottenTomatoes && item.tomatoMeter != null) {
+            val isFresh = item.tomatoMeter >= 60
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = if (isFresh) Color(0xFFDC2626).copy(alpha = 0.24f) else Color(0xFF65A30D).copy(alpha = 0.22f),
+              border = if (item.certifiedFresh) {
+                BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.70f))
+              } else {
+                null
+              },
+            ) {
+              Text(
+                text = "🍅 ${item.tomatoMeter}%",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = if (isFresh) Color(0xFFFCA5A5) else Color(0xFFBEF264),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
               )
             }
           }

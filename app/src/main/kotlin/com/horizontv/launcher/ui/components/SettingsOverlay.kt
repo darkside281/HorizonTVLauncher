@@ -88,12 +88,14 @@ import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
+import com.horizontv.launcher.model.JustWatchRegion
 import com.horizontv.launcher.model.JustWatchServiceCategory
 import com.horizontv.launcher.model.JustWatchServicePreset
 import com.horizontv.launcher.model.LauncherSettings
 import com.horizontv.launcher.model.MediaWallpaperProvider
 import com.horizontv.launcher.model.RedditSort
 import com.horizontv.launcher.model.ScreensaverMode
+import com.horizontv.launcher.model.UpdateCheckSchedule
 import com.horizontv.launcher.model.WeatherCondition
 import com.horizontv.launcher.model.WeatherForecastSize
 import com.horizontv.launcher.model.WeatherIconStyle
@@ -111,6 +113,7 @@ private enum class SettingsCategory(
   WEATHER("Weather", "Location, 1–7 day forecast, size & icon style", Icons.Rounded.Cloud),
   APPEARANCE("Appearance", "Ambient themes, custom wallpaper & accent color", Icons.Rounded.Palette),
   SYSTEM("Launcher & Apps", "Default launcher, Play Store, apps & backup", Icons.Rounded.Settings),
+  UPDATES("Updates", "Check for updates, schedule & latest changelog", Icons.Rounded.Download),
   ABOUT("About", "Version, features & launcher details", Icons.Rounded.Info),
 }
 
@@ -169,6 +172,9 @@ fun SettingsOverlay(
   onClearAllJustWatchServices: () -> Unit,
   onToggleJustWatchIncludeRentBuy: () -> Unit,
   onToggleJustWatchHideUnmatchedTitles: () -> Unit,
+  onSetJustWatchRegion: (JustWatchRegion) -> Unit = {},
+  onToggleJustWatchShowRottenTomatoes: () -> Unit = {},
+  onToggleJustWatchShowAgeRating: () -> Unit = {},
   onToggleShowAllAppsSection: () -> Unit,
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTileTitles: () -> Unit,
@@ -205,14 +211,20 @@ fun SettingsOverlay(
   onClearScreensaverPhotos: () -> Unit,
   onOpenSystemScreensaverSettings: () -> Unit,
   availableUpdate: AppUpdateInfo? = null,
+  latestRelease: AppUpdateInfo? = null,
   isCheckingForUpdate: Boolean = false,
   isDownloadingUpdate: Boolean = false,
   updateStatusText: String? = null,
   onCheckForUpdates: () -> Unit = {},
+  onLoadLatestRelease: () -> Unit = {},
+  onSetUpdateCheckSchedule: (UpdateCheckSchedule) -> Unit = {},
   onOpenUpdateDialog: () -> Unit = {},
 ) {
   var activeCategory by remember { mutableStateOf(SettingsCategory.ROWS) }
-  var activeSearchSection by remember { mutableStateOf(0) } // 0 = General, 1 = My Services, 2 = Streaming Apps
+  var activeHomeSection by remember { mutableStateOf(0) } // 0 = Rows & Tiles, 1 = Clock & All Apps
+  var activeSearchSection by remember { mutableStateOf(0) } // 0 = General, 1 = Region & Ratings, 2 = My Services, 3 = Apps
+  var activeWallpaperSection by remember { mutableStateOf(0) } // 0 = Source & Libraries, 1 = Slideshow & Display
+  var activeScreensaverSection by remember { mutableStateOf(0) } // 0 = Mode & Timing, 1 = Display & Overlays
   var activeServiceCategory by remember { mutableStateOf(JustWatchServiceCategory.MAIN_SERVICES) }
   var confirmResetLauncher by remember { mutableStateOf(false) }
   val tabRequesters = remember {
@@ -331,11 +343,12 @@ fun SettingsOverlay(
                     }
                     SettingsCategory.APPEARANCE -> LauncherPalettes.accentById(settings.accentId).name
                     SettingsCategory.SYSTEM -> if (isDefaultHome) "Default Active ✓" else "Set Default"
-                    SettingsCategory.ABOUT -> if (availableUpdate != null) {
+                    SettingsCategory.UPDATES -> if (availableUpdate != null) {
                       "Update: v${availableUpdate.versionName}"
                     } else {
-                      "v$appVersionName"
+                      settings.activeUpdateCheckSchedule.label
                     }
+                    SettingsCategory.ABOUT -> "v$appVersionName"
                   }
 
                   SidebarCategoryItem(
@@ -425,7 +438,13 @@ fun SettingsOverlay(
 
             // Scrollable Category Content
             val detailScroll = rememberScrollState()
-            LaunchedEffect(activeCategory) {
+            LaunchedEffect(
+              activeCategory,
+              activeHomeSection,
+              activeSearchSection,
+              activeWallpaperSection,
+              activeScreensaverSection,
+            ) {
               detailScroll.scrollTo(0)
             }
 
@@ -437,173 +456,205 @@ fun SettingsOverlay(
             ) {
               when (activeCategory) {
                 SettingsCategory.ROWS -> {
-                  SettingsToggleRow(
-                    title = "Lock Home Layout",
-                    subtitle = if (settings.lockHomeLayout) {
-                      "Locked — prevents rearranging, renaming, adding, or removing apps & rows"
-                    } else {
-                      "Unlocked — freely reorder apps, edit rows & customize icons"
-                    },
-                    checked = settings.lockHomeLayout,
-                    accent = accent,
-                    onClick = onToggleLockHomeLayout,
-                    modifier = Modifier
-                      .focusRequester(rightPaneEntryRequester)
-                      .focusProperties { left = activeTabRequester },
+                  val homeTabs = listOf(
+                    0 to "Rows & Tiles",
+                    1 to "Clock & All Apps",
                   )
-
-                  if (!settings.lockHomeLayout) {
-                    SettingsFieldLabel("Home Rows")
-                    settings.rows.forEachIndexed { index, row ->
-                      RowManageItem(
-                        row = row,
-                        isFirst = index == 0,
-                        isLast = index == settings.rows.lastIndex,
-                        canDelete = settings.rows.size > 1,
-                        accent = accent,
-                        firstFocusModifier = Modifier.focusProperties { left = activeTabRequester },
-                        onManageApps = { onManageRowApps(row.id) },
-                        onOrderApps = { onOrderRowApps(row.id) },
-                        onRename = { onRenameRow(row.id) },
-                        onMoveUp = { onMoveRowUp(row.id) },
-                        onMoveDown = { onMoveRowDown(row.id) },
-                        onDelete = { onDeleteRow(row.id) },
-                      )
-                    }
-                    SettingsActionChip(
-                      icon = Icons.Rounded.Add,
-                      label = "Add Extra Row",
-                      accent = accent,
-                      highlighted = true,
-                      onClick = onCreateRow,
-                      modifier = Modifier
-                        .fillMaxWidth()
-                        .focusProperties { left = activeTabRequester },
-                    )
-                  }
-
-                  Spacer(modifier = Modifier.height(4.dp))
-                  SettingsFieldLabel("Tiles")
-
                   Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                   ) {
-                    HomeTileSize.entries.forEachIndexed { idx, tileSize ->
+                    homeTabs.forEachIndexed { idx, (tabId, tabLabel) ->
                       SelectablePill(
-                        label = "${tileSize.label} Tiles",
-                        selected = HomeTileSize.fromId(settings.homeTileSize) == tileSize,
+                        label = tabLabel,
+                        selected = activeHomeSection == tabId,
                         accent = accent,
-                        onClick = { onSetHomeTileSize(tileSize.id) },
+                        onClick = { activeHomeSection = tabId },
                         modifier = Modifier
                           .weight(1f)
                           .then(
-                            if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                            if (idx == 0) {
+                              Modifier
+                                .focusRequester(rightPaneEntryRequester)
+                                .focusProperties { left = activeTabRequester }
+                            } else {
+                              Modifier
+                            },
                           ),
                       )
                     }
                   }
 
-                  SettingsToggleRow(
-                    title = "Show App Titles Under Tiles",
-                    subtitle = if (settings.showTileTitles) {
-                      "Shown — display app names underneath each tile"
-                    } else {
-                      "Hidden — clean artwork-only tiles with no text underneath"
-                    },
-                    checked = settings.showTileTitles,
-                    accent = accent,
-                    onClick = onToggleShowTileTitles,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
+                  when (activeHomeSection) {
+                    0 -> {
+                      SettingsToggleRow(
+                        title = "Lock Home Layout",
+                        subtitle = if (settings.lockHomeLayout) {
+                          "Locked — prevents rearranging, renaming, adding, or removing apps & rows"
+                        } else {
+                          "Unlocked — freely reorder apps, edit rows & customize icons"
+                        },
+                        checked = settings.lockHomeLayout,
+                        accent = accent,
+                        onClick = onToggleLockHomeLayout,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
 
-                  SettingsToggleRow(
-                    title = "Show TV Inputs (HDMI) Button",
-                    subtitle = when {
-                      !settings.showTvInputsButton -> "Hidden — TV Inputs button turned off"
-                      tvInputsCount > 0 -> "$tvInputsCount TV input(s) detected — HDMI switcher shown in top-right bar"
-                      else -> "Enabled — auto-hidden on streaming boxes with no hardware HDMI inputs"
-                    },
-                    checked = settings.showTvInputsButton,
-                    accent = accent,
-                    onClick = onToggleShowTvInputsButton,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
-
-                  if (!settings.lockHomeLayout) {
-                    SettingsToggleRow(
-                      title = "Show \"+ Add App\" Tile on Rows",
-                      subtitle = if (settings.showAddAppTile) {
-                        "Enabled — show the + Add App tile at the end of each row"
-                      } else {
-                        "Hidden — use + above or Hold OK to edit row apps"
-                      },
-                      checked = settings.showAddAppTile,
-                      accent = accent,
-                      onClick = onToggleShowAddAppTile,
-                      modifier = Modifier.focusProperties { left = activeTabRequester },
-                    )
-                  }
-
-                  Spacer(modifier = Modifier.height(4.dp))
-                  SettingsFieldLabel("Clock & Date")
-
-                  SettingsToggleRow(
-                    title = "Show Clock",
-                    subtitle = if (settings.showClock) "Large hero clock shown top-left" else "Clock hidden",
-                    checked = settings.showClock,
-                    accent = accent,
-                    onClick = onToggleShowClock,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
-
-                  if (settings.showClock) {
-                    SettingsToggleRow(
-                      title = "24-Hour Clock",
-                      subtitle = if (settings.use24HourClock) "22:45 format (24-hour)" else "10:45 PM format (12-hour)",
-                      checked = settings.use24HourClock,
-                      accent = accent,
-                      onClick = onToggle24HourClock,
-                      modifier = Modifier.focusProperties { left = activeTabRequester },
-                    )
-                  }
-
-                  SettingsToggleRow(
-                    title = "Show Date",
-                    subtitle = if (settings.showDate) "Day, date & month shown under clock" else "Date hidden",
-                    checked = settings.showDate,
-                    accent = accent,
-                    onClick = onToggleShowDate,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
-
-                  Spacer(modifier = Modifier.height(4.dp))
-                  SettingsFieldLabel("All Apps Grid")
-
-                  SettingsToggleRow(
-                    title = "Show All Apps Section",
-                    subtitle = "Display the All Apps grid below your custom rows",
-                    checked = settings.showAllAppsSection,
-                    accent = accent,
-                    onClick = onToggleShowAllAppsSection,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
-
-                  if (settings.showAllAppsSection) {
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                      listOf(4, 5, 6).forEachIndexed { i, cols ->
-                        SelectablePill(
-                          label = "$cols Columns",
-                          selected = settings.gridColumns == cols,
+                      if (!settings.lockHomeLayout) {
+                        SettingsFieldLabel("Home Rows")
+                        settings.rows.forEachIndexed { index, row ->
+                          RowManageItem(
+                            row = row,
+                            isFirst = index == 0,
+                            isLast = index == settings.rows.lastIndex,
+                            canDelete = settings.rows.size > 1,
+                            accent = accent,
+                            firstFocusModifier = Modifier.focusProperties { left = activeTabRequester },
+                            onManageApps = { onManageRowApps(row.id) },
+                            onOrderApps = { onOrderRowApps(row.id) },
+                            onRename = { onRenameRow(row.id) },
+                            onMoveUp = { onMoveRowUp(row.id) },
+                            onMoveDown = { onMoveRowDown(row.id) },
+                            onDelete = { onDeleteRow(row.id) },
+                          )
+                        }
+                        SettingsActionChip(
+                          icon = Icons.Rounded.Add,
+                          label = "Add Extra Row",
                           accent = accent,
-                          onClick = { onSetGridColumns(cols) },
+                          highlighted = true,
+                          onClick = onCreateRow,
                           modifier = Modifier
-                            .weight(1f)
-                            .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                            .fillMaxWidth()
+                            .focusProperties { left = activeTabRequester },
                         )
+                      }
+
+                      Spacer(modifier = Modifier.height(4.dp))
+                      SettingsFieldLabel("Tiles & Top Bar")
+
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        HomeTileSize.entries.forEachIndexed { idx, tileSize ->
+                          SelectablePill(
+                            label = "${tileSize.label} Tiles",
+                            selected = HomeTileSize.fromId(settings.homeTileSize) == tileSize,
+                            accent = accent,
+                            onClick = { onSetHomeTileSize(tileSize.id) },
+                            modifier = Modifier
+                              .weight(1f)
+                              .then(
+                                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                              ),
+                          )
+                        }
+                      }
+
+                      SettingsToggleRow(
+                        title = "Show App Titles Under Tiles",
+                        subtitle = if (settings.showTileTitles) {
+                          "Shown — display app names underneath each tile"
+                        } else {
+                          "Hidden — clean artwork-only tiles with no text underneath"
+                        },
+                        checked = settings.showTileTitles,
+                        accent = accent,
+                        onClick = onToggleShowTileTitles,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      if (!settings.lockHomeLayout) {
+                        SettingsToggleRow(
+                          title = "Show \"+ Add App\" Tile on Rows",
+                          subtitle = if (settings.showAddAppTile) {
+                            "Enabled — show the + Add App tile at the end of each row"
+                          } else {
+                            "Hidden — use + above or Hold OK to edit row apps"
+                          },
+                          checked = settings.showAddAppTile,
+                          accent = accent,
+                          onClick = onToggleShowAddAppTile,
+                          modifier = Modifier.focusProperties { left = activeTabRequester },
+                        )
+                      }
+
+                      SettingsToggleRow(
+                        title = "Show TV Inputs (HDMI) Button",
+                        subtitle = when {
+                          !settings.showTvInputsButton -> "Hidden — TV Inputs button turned off"
+                          tvInputsCount > 0 -> "$tvInputsCount TV input(s) detected — HDMI switcher shown in top-right bar"
+                          else -> "Enabled — auto-hidden on streaming boxes with no hardware HDMI inputs"
+                        },
+                        checked = settings.showTvInputsButton,
+                        accent = accent,
+                        onClick = onToggleShowTvInputsButton,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+                    }
+
+                    else -> {
+                      SettingsFieldLabel("Clock & Date")
+
+                      SettingsToggleRow(
+                        title = "Show Clock",
+                        subtitle = if (settings.showClock) "Large hero clock shown top-left" else "Clock hidden",
+                        checked = settings.showClock,
+                        accent = accent,
+                        onClick = onToggleShowClock,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      if (settings.showClock) {
+                        SettingsToggleRow(
+                          title = "24-Hour Clock",
+                          subtitle = if (settings.use24HourClock) "22:45 format (24-hour)" else "10:45 PM format (12-hour)",
+                          checked = settings.use24HourClock,
+                          accent = accent,
+                          onClick = onToggle24HourClock,
+                          modifier = Modifier.focusProperties { left = activeTabRequester },
+                        )
+                      }
+
+                      SettingsToggleRow(
+                        title = "Show Date",
+                        subtitle = if (settings.showDate) "Day, date & month shown under clock" else "Date hidden",
+                        checked = settings.showDate,
+                        accent = accent,
+                        onClick = onToggleShowDate,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      Spacer(modifier = Modifier.height(4.dp))
+                      SettingsFieldLabel("All Apps Grid")
+
+                      SettingsToggleRow(
+                        title = "Show All Apps Section",
+                        subtitle = "Display the All Apps grid below your custom rows",
+                        checked = settings.showAllAppsSection,
+                        accent = accent,
+                        onClick = onToggleShowAllAppsSection,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      if (settings.showAllAppsSection) {
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                          listOf(4, 5, 6).forEachIndexed { i, cols ->
+                            SelectablePill(
+                              label = "$cols Columns",
+                              selected = settings.gridColumns == cols,
+                              accent = accent,
+                              onClick = { onSetGridColumns(cols) },
+                              modifier = Modifier
+                                .weight(1f)
+                                .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                            )
+                          }
+                        }
                       }
                     }
                   }
@@ -611,10 +662,12 @@ fun SettingsOverlay(
 
                 SettingsCategory.SEARCH -> {
                   val justWatchEnabled = settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JUSTWATCH)
+                  val activeRegion = settings.activeJustWatchRegion
                   val searchTabs = listOf(
                     0 to "General",
-                    1 to "My Services (${settings.justWatchServices.size})",
-                    2 to "Streaming Apps (${externalSearchProviders.size})",
+                    1 to "Region & Ratings",
+                    2 to "My Services (${settings.justWatchServices.size})",
+                    3 to "Apps (${externalSearchProviders.size})",
                   )
 
                   Row(
@@ -661,7 +714,7 @@ fun SettingsOverlay(
                       SettingsFieldLabel("Core Search Providers")
 
                       SettingsToggleRow(
-                        title = "Where to Watch (JustWatch UK)",
+                        title = "Where to Watch (JustWatch ${activeRegion.code})",
                         subtitle = "Show which streaming services carry a movie or show",
                         checked = justWatchEnabled,
                         accent = accent,
@@ -719,7 +772,88 @@ fun SettingsOverlay(
                           modifier = Modifier.fillMaxWidth(),
                         ) {
                           Text(
-                            text = "Where to Watch (JustWatch UK) is currently turned off. Enable it under General to filter by your streaming services.",
+                            text = "Where to Watch (JustWatch ${activeRegion.code}) is currently turned off. Enable it under General to configure your country region and rating badges.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.68f),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                          )
+                        }
+                      } else {
+                        SettingsFieldLabel("Country / Region (${activeRegion.code})")
+                        Text(
+                          text = "Controls streaming availability and local age ratings (${activeRegion.ratingExample})",
+                          style = MaterialTheme.typography.bodySmall,
+                          color = Color.White.copy(alpha = 0.65f),
+                        )
+                        Column(
+                          modifier = Modifier.fillMaxWidth(),
+                          verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                          JustWatchRegion.entries.chunked(2).forEach { pair ->
+                            Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                              pair.forEachIndexed { colIdx, region ->
+                                SelectablePill(
+                                  label = "${region.label} (${region.code})",
+                                  selected = activeRegion == region,
+                                  accent = accent,
+                                  onClick = { onSetJustWatchRegion(region) },
+                                  modifier = Modifier
+                                    .weight(1f)
+                                    .then(
+                                      if (colIdx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                                    ),
+                                )
+                              }
+                              if (pair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                              }
+                            }
+                          }
+                        }
+
+                        SettingsFieldLabel("Ratings & Badges")
+
+                        SettingsToggleRow(
+                          title = "Show Age Ratings (${activeRegion.code})",
+                          subtitle = if (settings.justWatchShowAgeRating) {
+                            "Showing local content ratings (${activeRegion.ratingExample})"
+                          } else {
+                            "Age rating badges hidden on search results"
+                          },
+                          checked = settings.justWatchShowAgeRating,
+                          accent = accent,
+                          onClick = onToggleJustWatchShowAgeRating,
+                          modifier = Modifier.focusProperties { left = activeTabRequester },
+                        )
+
+                        SettingsToggleRow(
+                          title = "Show Rotten Tomatoes Critics Score",
+                          subtitle = if (settings.justWatchShowRottenTomatoes) {
+                            "Showing Rotten Tomatoes Tomatometer % alongside IMDb ratings"
+                          } else {
+                            "Rotten Tomatoes badges hidden on search results"
+                          },
+                          checked = settings.justWatchShowRottenTomatoes,
+                          accent = accent,
+                          onClick = onToggleJustWatchShowRottenTomatoes,
+                          modifier = Modifier.focusProperties { left = activeTabRequester },
+                        )
+                      }
+                    }
+
+                    2 -> {
+                      if (!justWatchEnabled) {
+                        Surface(
+                          shape = RoundedCornerShape(14.dp),
+                          color = Color.White.copy(alpha = 0.05f),
+                          border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                          modifier = Modifier.fillMaxWidth(),
+                        ) {
+                          Text(
+                            text = "Where to Watch (JustWatch ${activeRegion.code}) is currently turned off. Enable it under General to filter by your streaming services.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color.White.copy(alpha = 0.68f),
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -733,7 +867,7 @@ fun SettingsOverlay(
                           subtitle = if (settings.justWatchFilterServices) {
                             "Filtering results to your ${settings.justWatchServices.size} selected service(s)"
                           } else {
-                            "Showing all UK streaming services — turn on to filter to yours"
+                            "Showing all ${activeRegion.label} streaming services — turn on to filter to yours"
                           },
                           checked = settings.justWatchFilterServices,
                           accent = accent,
@@ -977,196 +1111,225 @@ fun SettingsOverlay(
                     )
 
                     if (settings.jellyfinEnabled) {
-                      if (isReddit) {
-                        SettingsFieldLabel("Reddit Feed Sort")
-                        Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                          RedditSort.entries.forEachIndexed { i, sort ->
-                            SelectablePill(
-                              label = sort.label,
-                              selected = settings.redditSort == sort.id,
-                              accent = accent,
-                              onClick = { onSetRedditSort(sort.id) },
-                              modifier = Modifier
-                                .weight(1f)
-                                .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
-                            )
-                          }
+                      val wallpaperTabs = listOf(
+                        0 to if (isReddit) "Feed & Subreddits" else "Source & Libraries",
+                        1 to "Slideshow & Display",
+                      )
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        wallpaperTabs.forEachIndexed { idx, (tabId, tabLabel) ->
+                          SelectablePill(
+                            label = tabLabel,
+                            selected = activeWallpaperSection == tabId,
+                            accent = accent,
+                            onClick = { activeWallpaperSection = tabId },
+                            modifier = Modifier
+                              .weight(1f)
+                              .then(
+                                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                              ),
+                          )
                         }
+                      }
 
-                        val allSubNames = (LauncherSettings.PRESET_REDDIT_SUBREDDITS + settings.redditCustomSubreddits.sorted()).distinct()
-                        SettingsFieldLabel("Subreddits (${settings.redditSubreddits.size} Selected — Multi-Select)")
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                          allSubNames.chunked(3).forEach { rowSubs ->
+                      when (activeWallpaperSection) {
+                        0 -> {
+                          if (isReddit) {
+                            SettingsFieldLabel("Reddit Feed Sort")
                             Row(
                               modifier = Modifier.fillMaxWidth(),
                               horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                              rowSubs.forEachIndexed { colIdx, sub ->
-                                val isSelected = sub in settings.redditSubreddits
+                              RedditSort.entries.forEachIndexed { i, sort ->
                                 SelectablePill(
-                                  label = "r/$sub",
-                                  selected = isSelected,
+                                  label = sort.label,
+                                  selected = settings.redditSort == sort.id,
                                   accent = accent,
-                                  showCheckmark = true,
-                                  onClick = {
-                                    onSelectJellyfinLibrary(
-                                      JellyfinLibrary(id = sub, name = "r/$sub", collectionType = "reddit"),
-                                    )
-                                  },
+                                  onClick = { onSetRedditSort(sort.id) },
                                   modifier = Modifier
                                     .weight(1f)
-                                    .then(if (colIdx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                                    .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
                                 )
                               }
-                              repeat(3 - rowSubs.size) {
-                                Spacer(modifier = Modifier.weight(1f))
-                              }
                             }
-                          }
-                        }
 
-                        SettingsActionChip(
-                          icon = Icons.Rounded.Add,
-                          label = "Add Custom Subreddit…",
-                          accent = accent,
-                          highlighted = false,
-                          onClick = onOpenAddSubreddit,
-                          modifier = Modifier
-                            .fillMaxWidth()
-                            .focusProperties { left = activeTabRequester },
-                        )
-                      } else {
-                        SettingsFieldLabel("Media Type (Movies / TV)")
-                        Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                          JellyfinMediaType.entries.forEachIndexed { i, mediaType ->
-                            SelectablePill(
-                              label = mediaType.label,
-                              selected = providerConfig.mediaType == mediaType.id,
-                              accent = accent,
-                              onClick = { onSetJellyfinMediaType(mediaType.id) },
-                              modifier = Modifier
-                                .weight(1f)
-                                .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
-                            )
-                          }
-                        }
-
-                        if (jellyfinLibraries.isNotEmpty()) {
-                          val isTmdb = activeProvider == MediaWallpaperProvider.TMDB
-                          val selectedCount = providerLibraryIds.size
-                          val noun = if (isTmdb) "Categories" else "Libraries"
-                          SettingsFieldLabel(
-                            if (selectedCount > 0) {
-                              "${activeProvider.label} $noun ($selectedCount Selected — Multi-Select)"
-                            } else {
-                              "${activeProvider.label} $noun (Select One or More)"
-                            },
-                          )
-                          val allOptions: List<JellyfinLibrary?> = if (isTmdb) jellyfinLibraries else listOf(null) + jellyfinLibraries
-                          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            allOptions.chunked(3).forEach { rowLibs ->
-                              Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                              ) {
-                                rowLibs.forEachIndexed { colIdx, lib ->
-                                  val isSelected = if (lib == null) {
-                                    providerLibraryIds.isEmpty()
-                                  } else {
-                                    lib.id in providerLibraryIds
+                            val allSubNames = (LauncherSettings.PRESET_REDDIT_SUBREDDITS + settings.redditCustomSubreddits.sorted()).distinct()
+                            SettingsFieldLabel("Subreddits (${settings.redditSubreddits.size} Selected — Multi-Select)")
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                              allSubNames.chunked(3).forEach { rowSubs ->
+                                Row(
+                                  modifier = Modifier.fillMaxWidth(),
+                                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                  rowSubs.forEachIndexed { colIdx, sub ->
+                                    val isSelected = sub in settings.redditSubreddits
+                                    SelectablePill(
+                                      label = "r/$sub",
+                                      selected = isSelected,
+                                      accent = accent,
+                                      showCheckmark = true,
+                                      onClick = {
+                                        onSelectJellyfinLibrary(
+                                          JellyfinLibrary(id = sub, name = "r/$sub", collectionType = "reddit"),
+                                        )
+                                      },
+                                      modifier = Modifier
+                                        .weight(1f)
+                                        .then(if (colIdx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                                    )
                                   }
-                                  SelectablePill(
-                                    label = lib?.name ?: "All Libraries",
-                                    selected = isSelected,
-                                    accent = accent,
-                                    showCheckmark = true,
-                                    onClick = { onSelectJellyfinLibrary(lib) },
-                                    modifier = Modifier
-                                      .weight(1f)
-                                      .then(if (colIdx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
-                                  )
+                                  repeat(3 - rowSubs.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                  }
                                 }
-                                repeat(3 - rowLibs.size) {
-                                  Spacer(modifier = Modifier.weight(1f))
+                              }
+                            }
+
+                            SettingsActionChip(
+                              icon = Icons.Rounded.Add,
+                              label = "Add Custom Subreddit…",
+                              accent = accent,
+                              highlighted = false,
+                              onClick = onOpenAddSubreddit,
+                              modifier = Modifier
+                                .fillMaxWidth()
+                                .focusProperties { left = activeTabRequester },
+                            )
+                          } else {
+                            SettingsFieldLabel("Media Type (Movies / TV)")
+                            Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                              JellyfinMediaType.entries.forEachIndexed { i, mediaType ->
+                                SelectablePill(
+                                  label = mediaType.label,
+                                  selected = providerConfig.mediaType == mediaType.id,
+                                  accent = accent,
+                                  onClick = { onSetJellyfinMediaType(mediaType.id) },
+                                  modifier = Modifier
+                                    .weight(1f)
+                                    .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                                )
+                              }
+                            }
+
+                            if (jellyfinLibraries.isNotEmpty()) {
+                              val isTmdb = activeProvider == MediaWallpaperProvider.TMDB
+                              val selectedCount = providerLibraryIds.size
+                              val noun = if (isTmdb) "Categories" else "Libraries"
+                              SettingsFieldLabel(
+                                if (selectedCount > 0) {
+                                  "${activeProvider.label} $noun ($selectedCount Selected — Multi-Select)"
+                                } else {
+                                  "${activeProvider.label} $noun (Select One or More)"
+                                },
+                              )
+                              val allOptions: List<JellyfinLibrary?> = if (isTmdb) jellyfinLibraries else listOf(null) + jellyfinLibraries
+                              Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                allOptions.chunked(3).forEach { rowLibs ->
+                                  Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                  ) {
+                                    rowLibs.forEachIndexed { colIdx, lib ->
+                                      val isSelected = if (lib == null) {
+                                        providerLibraryIds.isEmpty()
+                                      } else {
+                                        lib.id in providerLibraryIds
+                                      }
+                                      SelectablePill(
+                                        label = lib?.name ?: "All Libraries",
+                                        selected = isSelected,
+                                        accent = accent,
+                                        showCheckmark = true,
+                                        onClick = { onSelectJellyfinLibrary(lib) },
+                                        modifier = Modifier
+                                          .weight(1f)
+                                          .then(if (colIdx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                                      )
+                                    }
+                                    repeat(3 - rowLibs.size) {
+                                      Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                  }
                                 }
                               }
                             }
                           }
                         }
-                      }
 
-                      SettingsFieldLabel("Wallpaper Count")
-                      Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                      ) {
-                        listOf(20, 40, 80, 150, 300).forEachIndexed { i, count ->
-                          SelectablePill(
-                            label = "$count",
-                            selected = providerConfig.backdropLimit == count,
+                        else -> {
+                          SettingsFieldLabel("Wallpaper Count")
+                          Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                          ) {
+                            listOf(20, 40, 80, 150, 300).forEachIndexed { i, count ->
+                              SelectablePill(
+                                label = "$count",
+                                selected = providerConfig.backdropLimit == count,
+                                accent = accent,
+                                onClick = { onSetJellyfinBackdropLimit(count) },
+                                modifier = Modifier
+                                  .weight(1f)
+                                  .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                              )
+                            }
+                          }
+
+                          SettingsFieldLabel("Slideshow Speed")
+                          Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                          ) {
+                            listOf("15s" to 15, "30s" to 30, "1m" to 60, "5m" to 300).forEachIndexed { i, (label, secs) ->
+                              SelectablePill(
+                                label = label,
+                                selected = providerConfig.intervalSeconds == secs,
+                                accent = accent,
+                                onClick = { onSetJellyfinInterval(secs) },
+                                modifier = Modifier
+                                  .weight(1f)
+                                  .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                              )
+                            }
+                          }
+
+                          SettingsToggleRow(
+                            title = if (isReddit) "Show Subreddit Credit" else "Show Movie / Show Logo",
+                            subtitle = if (isReddit) {
+                              "Show subtle r/subreddit credit in the bottom-right corner"
+                            } else {
+                              "Overlay the ${activeProvider.label} ClearLogo on the wallpaper"
+                            },
+                            checked = providerConfig.showTitle,
                             accent = accent,
-                            onClick = { onSetJellyfinBackdropLimit(count) },
+                            onClick = onToggleJellyfinShowTitle,
+                            modifier = Modifier.focusProperties { left = activeTabRequester },
+                          )
+
+                          WallpaperDimmingRow(
+                            currentDim = settings.wallpaperDimAlpha,
+                            accent = accent,
+                            leftFocusRequester = activeTabRequester,
+                            onSetDim = onSetWallpaperDim,
+                          )
+
+                          SettingsActionChip(
+                            icon = Icons.Rounded.SkipNext,
+                            label = "Next Backdrop Now",
+                            accent = accent,
+                            highlighted = false,
+                            onClick = onNextJellyfinBackdrop,
                             modifier = Modifier
-                              .weight(1f)
-                              .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+                              .fillMaxWidth()
+                              .focusProperties { left = activeTabRequester },
                           )
                         }
                       }
-
-                      SettingsFieldLabel("Slideshow Speed")
-                      Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                      ) {
-                        listOf("15s" to 15, "30s" to 30, "1m" to 60, "5m" to 300).forEachIndexed { i, (label, secs) ->
-                          SelectablePill(
-                            label = label,
-                            selected = providerConfig.intervalSeconds == secs,
-                            accent = accent,
-                            onClick = { onSetJellyfinInterval(secs) },
-                            modifier = Modifier
-                              .weight(1f)
-                              .then(if (i == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
-                          )
-                        }
-                      }
-
-                      SettingsToggleRow(
-                        title = if (isReddit) "Show Subreddit Credit" else "Show Movie / Show Logo",
-                        subtitle = if (isReddit) {
-                          "Show subtle r/subreddit credit in the bottom-right corner"
-                        } else {
-                          "Overlay the ${activeProvider.label} ClearLogo on the wallpaper"
-                        },
-                        checked = providerConfig.showTitle,
-                        accent = accent,
-                        onClick = onToggleJellyfinShowTitle,
-                        modifier = Modifier.focusProperties { left = activeTabRequester },
-                      )
-
-                      WallpaperDimmingRow(
-                        currentDim = settings.wallpaperDimAlpha,
-                        accent = accent,
-                        leftFocusRequester = activeTabRequester,
-                        onSetDim = onSetWallpaperDim,
-                      )
-
-                      SettingsActionChip(
-                        icon = Icons.Rounded.SkipNext,
-                        label = "Next Backdrop Now",
-                        accent = accent,
-                        highlighted = false,
-                        onClick = onNextJellyfinBackdrop,
-                        modifier = Modifier
-                          .fillMaxWidth()
-                          .focusProperties { left = activeTabRequester },
-                      )
                     }
                   }
                 }
@@ -1200,52 +1363,20 @@ fun SettingsOverlay(
                     )
                   }
 
-                  SettingsToggleRow(
-                    title = "Enable Idle Screensaver",
-                    subtitle = if (settings.screensaverEnabled) {
-                      "Starts automatically after ${settings.screensaverTimeoutMinutes} min of inactivity on Home"
-                    } else {
-                      "Off — you can still launch Preview or select Horizon in Android System Screensaver"
-                    },
-                    checked = settings.screensaverEnabled,
-                    accent = accent,
-                    onClick = onToggleScreensaverEnabled,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
+                  val screensaverTabs = listOf(
+                    0 to "Mode & Timing",
+                    1 to "Display & Overlays",
                   )
-
-                  if (settings.screensaverEnabled) {
-                    SettingsFieldLabel("Idle Timeout")
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                      listOf(1, 3, 5, 10, 15, 30).forEachIndexed { idx, mins ->
-                        SelectablePill(
-                          label = "${mins}m",
-                          selected = settings.screensaverTimeoutMinutes == mins,
-                          accent = accent,
-                          onClick = { onSetScreensaverTimeoutMinutes(mins) },
-                          modifier = Modifier
-                            .weight(1f)
-                            .then(
-                              if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
-                            ),
-                        )
-                      }
-                    }
-                  }
-
-                  SettingsFieldLabel("Screensaver Mode")
                   Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                   ) {
-                    ScreensaverMode.entries.forEachIndexed { idx, candidate ->
+                    screensaverTabs.forEachIndexed { idx, (tabId, tabLabel) ->
                       SelectablePill(
-                        label = candidate.label,
-                        selected = mode == candidate,
+                        label = tabLabel,
+                        selected = activeScreensaverSection == tabId,
                         accent = accent,
-                        onClick = { onSetScreensaverMode(candidate) },
+                        onClick = { activeScreensaverSection = tabId },
                         modifier = Modifier
                           .weight(1f)
                           .then(
@@ -1255,203 +1386,266 @@ fun SettingsOverlay(
                     }
                   }
 
-                  when (mode) {
-                    ScreensaverMode.WALLPAPER_ARTWORK -> {
-                      Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
-                        modifier = Modifier.fillMaxWidth(),
-                      ) {
-                        Column(
-                          modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                          verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                          Text(
-                            text = "Artwork Source: ${activeProvider.label}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                          )
-                          Text(
-                            text = if (settings.isProviderConfigured(activeProvider)) {
-                              "Pulls high-res backdrops & ClearLogos from ${activeProvider.label}. Configure provider & categories in Customize → Wallpapers."
-                            } else {
-                              "${activeProvider.label} isn't configured yet — configure a provider in Customize → Wallpapers (or switch to Reddit / Ambient Mode)."
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White.copy(alpha = 0.65f),
-                          )
-                        }
-                      }
-                    }
-
-                    ScreensaverMode.PHOTOS -> {
-                      Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
-                        modifier = Modifier.fillMaxWidth(),
-                      ) {
-                        Column(
-                          modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                          verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                          Text(
-                            text = if (screensaverPhotoCount > 0) {
-                              "$screensaverPhotoCount photo${if (screensaverPhotoCount == 1) "" else "s"} ready for slideshow"
-                            } else {
-                              "No photos selected yet"
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                          )
-                          Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                          ) {
-                            SettingsActionChip(
-                              icon = Icons.Rounded.FolderOpen,
-                              label = "Pick Photo Folder",
-                              accent = accent,
-                              highlighted = screensaverPhotoCount == 0,
-                              onClick = onPickScreensaverPhotoFolder,
-                              modifier = Modifier
-                                .weight(1f)
-                                .focusProperties { left = activeTabRequester },
-                            )
-                            SettingsActionChip(
-                              icon = Icons.Rounded.PhotoLibrary,
-                              label = "Pick Photos",
-                              accent = accent,
-                              highlighted = false,
-                              onClick = onPickScreensaverPhotos,
-                              modifier = Modifier.weight(1f),
-                            )
-                          }
-                          if (screensaverPhotoCount > 0 || !settings.screensaverPhotoFolderUri.isNullOrBlank() || settings.screensaverPhotoUris.isNotEmpty()) {
-                            SettingsActionChip(
-                              icon = Icons.Rounded.DeleteOutline,
-                              label = "Clear Selected Photos",
-                              accent = accent,
-                              highlighted = false,
-                              onClick = onClearScreensaverPhotos,
-                              modifier = Modifier
-                                .fillMaxWidth()
-                                .focusProperties { left = activeTabRequester },
-                            )
-                          }
-                        }
-                      }
-                    }
-
-                    ScreensaverMode.AMBIENT -> {
+                  when (activeScreensaverSection) {
+                    0 -> {
                       SettingsToggleRow(
-                        title = "Cycle Ambient Themes",
-                        subtitle = if (settings.screensaverAmbientCycle) {
-                          "Smoothly transitions through all 6 Horizon ambient palettes"
+                        title = "Enable Idle Screensaver",
+                        subtitle = if (settings.screensaverEnabled) {
+                          "Starts automatically after ${settings.screensaverTimeoutMinutes} min of inactivity on Home"
                         } else {
-                          "Stays on your current theme (${LauncherPalettes.themeById(settings.themeId).name})"
+                          "Off — you can still launch Preview or select Horizon in Android System Screensaver"
                         },
-                        checked = settings.screensaverAmbientCycle,
+                        checked = settings.screensaverEnabled,
                         accent = accent,
-                        onClick = onToggleScreensaverAmbientCycle,
+                        onClick = onToggleScreensaverEnabled,
                         modifier = Modifier.focusProperties { left = activeTabRequester },
                       )
-                    }
-                  }
 
-                  if (mode != ScreensaverMode.AMBIENT) {
-                    SettingsFieldLabel("Slide Interval")
-                    Row(
-                      modifier = Modifier.fillMaxWidth(),
-                      horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                      listOf(10 to "10s", 20 to "20s", 30 to "30s", 60 to "1m", 120 to "2m").forEachIndexed { idx, (secs, label) ->
-                        SelectablePill(
-                          label = label,
-                          selected = settings.screensaverIntervalSeconds == secs,
-                          accent = accent,
-                          onClick = { onSetScreensaverIntervalSeconds(secs) },
-                          modifier = Modifier
-                            .weight(1f)
-                            .then(
-                              if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
-                            ),
-                        )
+                      if (settings.screensaverEnabled) {
+                        SettingsFieldLabel("Idle Timeout")
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                          listOf(1, 3, 5, 10, 15, 30).forEachIndexed { idx, mins ->
+                            SelectablePill(
+                              label = "${mins}m",
+                              selected = settings.screensaverTimeoutMinutes == mins,
+                              accent = accent,
+                              onClick = { onSetScreensaverTimeoutMinutes(mins) },
+                              modifier = Modifier
+                                .weight(1f)
+                                .then(
+                                  if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                                ),
+                            )
+                          }
+                        }
+                      }
+
+                      SettingsFieldLabel("Screensaver Mode")
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        ScreensaverMode.entries.forEachIndexed { idx, candidate ->
+                          SelectablePill(
+                            label = candidate.label,
+                            selected = mode == candidate,
+                            accent = accent,
+                            onClick = { onSetScreensaverMode(candidate) },
+                            modifier = Modifier
+                              .weight(1f)
+                              .then(
+                                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                              ),
+                          )
+                        }
+                      }
+
+                      when (mode) {
+                        ScreensaverMode.WALLPAPER_ARTWORK -> {
+                          Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White.copy(alpha = 0.05f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                            modifier = Modifier.fillMaxWidth(),
+                          ) {
+                            Column(
+                              modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                              verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                              Text(
+                                text = "Artwork Source: ${activeProvider.label}",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                              )
+                              Text(
+                                text = if (settings.isProviderConfigured(activeProvider)) {
+                                  "Pulls high-res backdrops & ClearLogos from ${activeProvider.label}. Configure provider & categories in Customize → Wallpapers."
+                                } else {
+                                  "${activeProvider.label} isn't configured yet — configure a provider in Customize → Wallpapers (or switch to Reddit / Ambient Mode)."
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.65f),
+                              )
+                            }
+                          }
+                        }
+
+                        ScreensaverMode.PHOTOS -> {
+                          Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White.copy(alpha = 0.05f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                            modifier = Modifier.fillMaxWidth(),
+                          ) {
+                            Column(
+                              modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                              verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                              Text(
+                                text = if (screensaverPhotoCount > 0) {
+                                  "$screensaverPhotoCount photo${if (screensaverPhotoCount == 1) "" else "s"} ready for slideshow"
+                                } else {
+                                  "No photos selected yet"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                              )
+                              Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                              ) {
+                                SettingsActionChip(
+                                  icon = Icons.Rounded.FolderOpen,
+                                  label = "Pick Photo Folder",
+                                  accent = accent,
+                                  highlighted = screensaverPhotoCount == 0,
+                                  onClick = onPickScreensaverPhotoFolder,
+                                  modifier = Modifier
+                                    .weight(1f)
+                                    .focusProperties { left = activeTabRequester },
+                                )
+                                SettingsActionChip(
+                                  icon = Icons.Rounded.PhotoLibrary,
+                                  label = "Pick Photos",
+                                  accent = accent,
+                                  highlighted = false,
+                                  onClick = onPickScreensaverPhotos,
+                                  modifier = Modifier.weight(1f),
+                                )
+                              }
+                              if (screensaverPhotoCount > 0 || !settings.screensaverPhotoFolderUri.isNullOrBlank() || settings.screensaverPhotoUris.isNotEmpty()) {
+                                SettingsActionChip(
+                                  icon = Icons.Rounded.DeleteOutline,
+                                  label = "Clear Selected Photos",
+                                  accent = accent,
+                                  highlighted = false,
+                                  onClick = onClearScreensaverPhotos,
+                                  modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusProperties { left = activeTabRequester },
+                                )
+                              }
+                            }
+                          }
+                        }
+
+                        ScreensaverMode.AMBIENT -> {
+                          SettingsToggleRow(
+                            title = "Cycle Ambient Themes",
+                            subtitle = if (settings.screensaverAmbientCycle) {
+                              "Smoothly transitions through all 6 Horizon ambient palettes"
+                            } else {
+                              "Stays on your current theme (${LauncherPalettes.themeById(settings.themeId).name})"
+                            },
+                            checked = settings.screensaverAmbientCycle,
+                            accent = accent,
+                            onClick = onToggleScreensaverAmbientCycle,
+                            modifier = Modifier.focusProperties { left = activeTabRequester },
+                          )
+                        }
+                      }
+
+                      if (mode != ScreensaverMode.AMBIENT) {
+                        SettingsFieldLabel("Slide Interval")
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                          listOf(10 to "10s", 20 to "20s", 30 to "30s", 60 to "1m", 120 to "2m").forEachIndexed { idx, (secs, label) ->
+                            SelectablePill(
+                              label = label,
+                              selected = settings.screensaverIntervalSeconds == secs,
+                              accent = accent,
+                              onClick = { onSetScreensaverIntervalSeconds(secs) },
+                              modifier = Modifier
+                                .weight(1f)
+                                .then(
+                                  if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                                ),
+                            )
+                          }
+                        }
                       }
                     }
 
-                    SettingsToggleRow(
-                      title = "Ken Burns Motion",
-                      subtitle = "Slow cinematic zoom & gentle pan across each slide",
-                      checked = settings.screensaverKenBurns,
-                      accent = accent,
-                      onClick = onToggleScreensaverKenBurns,
-                      modifier = Modifier.focusProperties { left = activeTabRequester },
-                    )
-                  }
+                    else -> {
+                      if (mode != ScreensaverMode.AMBIENT) {
+                        SettingsToggleRow(
+                          title = "Ken Burns Motion",
+                          subtitle = "Slow cinematic zoom & gentle pan across each slide",
+                          checked = settings.screensaverKenBurns,
+                          accent = accent,
+                          onClick = onToggleScreensaverKenBurns,
+                          modifier = Modifier.focusProperties { left = activeTabRequester },
+                        )
+                      }
 
-                  SettingsFieldLabel("Overlays & Display")
+                      SettingsFieldLabel("Overlays")
 
-                  SettingsToggleRow(
-                    title = "Show Clock & Date",
-                    subtitle = "Floating time & date overlay on the screensaver",
-                    checked = settings.screensaverShowClock,
-                    accent = accent,
-                    onClick = onToggleScreensaverShowClock,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
-
-                  SettingsToggleRow(
-                    title = "Show Weather",
-                    subtitle = if (settings.isWeatherConfigured) {
-                      "Current temperature & condition for ${settings.weatherLocationName.substringBefore(",")}"
-                    } else {
-                      "Configure a city in Customize → Weather to display weather"
-                    },
-                    checked = settings.screensaverShowWeather,
-                    accent = accent,
-                    onClick = onToggleScreensaverShowWeather,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
-
-                  if (mode != ScreensaverMode.AMBIENT) {
-                    SettingsToggleRow(
-                      title = "Show Title / ClearLogo",
-                      subtitle = "Display artwork ClearLogo, movie/show title, or photo filename",
-                      checked = settings.screensaverShowTitle,
-                      accent = accent,
-                      onClick = onToggleScreensaverShowTitle,
-                      modifier = Modifier.focusProperties { left = activeTabRequester },
-                    )
-                  }
-
-                  SettingsToggleRow(
-                    title = "OLED Burn-In Protection",
-                    subtitle = "Gently shifts clock & overlay corners every 90 seconds",
-                    checked = settings.screensaverBurnInShift,
-                    accent = accent,
-                    onClick = onToggleScreensaverBurnInShift,
-                    modifier = Modifier.focusProperties { left = activeTabRequester },
-                  )
-
-                  SettingsFieldLabel("Night Dimming")
-                  Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                  ) {
-                    listOf(0.0f to "0%", 0.15f to "15%", 0.25f to "25%", 0.40f to "40%", 0.60f to "60%", 0.75f to "75%").forEachIndexed { idx, (alpha, label) ->
-                      SelectablePill(
-                        label = label,
-                        selected = kotlin.math.abs(settings.screensaverDimAlpha - alpha) < 0.04f,
+                      SettingsToggleRow(
+                        title = "Show Clock & Date",
+                        subtitle = "Floating time & date overlay on the screensaver",
+                        checked = settings.screensaverShowClock,
                         accent = accent,
-                        onClick = { onSetScreensaverDimAlpha(alpha) },
-                        modifier = Modifier
-                          .weight(1f)
-                          .then(
-                            if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
-                          ),
+                        onClick = onToggleScreensaverShowClock,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
                       )
+
+                      SettingsToggleRow(
+                        title = "Show Weather",
+                        subtitle = if (settings.isWeatherConfigured) {
+                          "Current temperature & condition for ${settings.weatherLocationName.substringBefore(",")}"
+                        } else {
+                          "Configure a city in Customize → Weather to display weather"
+                        },
+                        checked = settings.screensaverShowWeather,
+                        accent = accent,
+                        onClick = onToggleScreensaverShowWeather,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      if (mode != ScreensaverMode.AMBIENT) {
+                        SettingsToggleRow(
+                          title = "Show Title / ClearLogo",
+                          subtitle = "Display artwork ClearLogo, movie/show title, or photo filename",
+                          checked = settings.screensaverShowTitle,
+                          accent = accent,
+                          onClick = onToggleScreensaverShowTitle,
+                          modifier = Modifier.focusProperties { left = activeTabRequester },
+                        )
+                      }
+
+                      SettingsToggleRow(
+                        title = "OLED Burn-In Protection",
+                        subtitle = "Gently shifts clock & overlay corners every 90 seconds",
+                        checked = settings.screensaverBurnInShift,
+                        accent = accent,
+                        onClick = onToggleScreensaverBurnInShift,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      SettingsFieldLabel("Night Dimming")
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        listOf(0.0f to "0%", 0.15f to "15%", 0.25f to "25%", 0.40f to "40%", 0.60f to "60%", 0.75f to "75%").forEachIndexed { idx, (alpha, label) ->
+                          SelectablePill(
+                            label = label,
+                            selected = kotlin.math.abs(settings.screensaverDimAlpha - alpha) < 0.04f,
+                            accent = accent,
+                            onClick = { onSetScreensaverDimAlpha(alpha) },
+                            modifier = Modifier
+                              .weight(1f)
+                              .then(
+                                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                              ),
+                          )
+                        }
+                      }
                     }
                   }
                 }
@@ -1884,6 +2078,177 @@ fun SettingsOverlay(
                   }
                 }
 
+                SettingsCategory.UPDATES -> {
+                  LaunchedEffect(Unit) {
+                    onLoadLatestRelease()
+                  }
+
+                  val currentSchedule = settings.activeUpdateCheckSchedule
+                  val releaseToShow = availableUpdate ?: latestRelease
+
+                  Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (availableUpdate != null) accent.primary.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f),
+                    border = BorderStroke(
+                      1.dp,
+                      if (availableUpdate != null) accent.primary.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.10f),
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                  ) {
+                    Column(
+                      modifier = Modifier.padding(16.dp),
+                      verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                      ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                          Text(
+                            text = "Installed Version: v$appVersionName (Build $appVersionCode)",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                          )
+                          Text(
+                            text = when {
+                              availableUpdate != null -> "New version available: v${availableUpdate.versionName}"
+                              isCheckingForUpdate -> "Checking GitHub for updates…"
+                              !updateStatusText.isNullOrBlank() -> updateStatusText
+                              else -> "Up to date with latest GitHub release"
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                              fontWeight = if (availableUpdate != null) FontWeight.SemiBold else FontWeight.Normal,
+                            ),
+                            color = if (availableUpdate != null) accent.primary else Color.White.copy(alpha = 0.72f),
+                          )
+                        }
+                      }
+
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        if (availableUpdate != null) {
+                          SettingsActionChip(
+                            icon = Icons.Rounded.Download,
+                            label = if (isDownloadingUpdate) "Downloading…" else "Update to v${availableUpdate.versionName}",
+                            accent = accent,
+                            highlighted = true,
+                            onClick = onOpenUpdateDialog,
+                            modifier = Modifier
+                              .weight(1f)
+                              .focusRequester(rightPaneEntryRequester)
+                              .focusProperties { left = activeTabRequester },
+                          )
+                        }
+                        SettingsActionChip(
+                          icon = Icons.Rounded.Refresh,
+                          label = if (isCheckingForUpdate) "Checking…" else "Check for Updates",
+                          accent = accent,
+                          highlighted = false,
+                          onClick = onCheckForUpdates,
+                          modifier = Modifier
+                            .weight(1f)
+                            .then(
+                              if (availableUpdate == null) {
+                                Modifier
+                                  .focusRequester(rightPaneEntryRequester)
+                                  .focusProperties { left = activeTabRequester }
+                              } else {
+                                Modifier
+                              },
+                            ),
+                        )
+                      }
+                    }
+                  }
+
+                  SettingsFieldLabel("Automatic Update Checks")
+                  Text(
+                    text = currentSchedule.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.68f),
+                  )
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                  ) {
+                    UpdateCheckSchedule.entries.forEachIndexed { idx, option ->
+                      SelectablePill(
+                        label = option.label,
+                        selected = currentSchedule == option,
+                        accent = accent,
+                        onClick = { onSetUpdateCheckSchedule(option) },
+                        modifier = Modifier
+                          .weight(1f)
+                          .then(
+                            if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                          ),
+                      )
+                    }
+                  }
+
+                  SettingsFieldLabel("Latest GitHub Release")
+                  Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White.copy(alpha = 0.05f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                    modifier = Modifier.fillMaxWidth(),
+                  ) {
+                    Column(
+                      modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                      verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      when {
+                        releaseToShow != null -> {
+                          Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                          ) {
+                            Text(
+                              text = releaseToShow.releaseName,
+                              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                              color = Color.White,
+                            )
+                            if (releaseToShow.publishedAt.isNotBlank()) {
+                              Text(
+                                text = "Released ${releaseToShow.publishedAt}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = accent.primary,
+                              )
+                            }
+                          }
+                          val cleanedNotes = releaseToShow.releaseNotes
+                            .replace(Regex("""^#+\s*""", RegexOption.MULTILINE), "")
+                            .replace("**", "")
+                            .trim()
+                          Text(
+                            text = cleanedNotes.ifEmpty { "No changelog provided for this release." },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.82f),
+                          )
+                        }
+                        isCheckingForUpdate -> {
+                          Text(
+                            text = "Loading latest release & changelog from GitHub…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.68f),
+                          )
+                        }
+                        else -> {
+                          Text(
+                            text = "Press Check for Updates to load the latest release date and changelog from GitHub.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.68f),
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+
                 SettingsCategory.ABOUT -> {
                   Surface(
                     shape = RoundedCornerShape(18.dp),
@@ -1936,71 +2301,6 @@ fun SettingsOverlay(
                     }
                   }
 
-                  SettingsFieldLabel("Software Updates (GitHub)")
-                  Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (availableUpdate != null) accent.primary.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f),
-                    border = BorderStroke(
-                      1.dp,
-                      if (availableUpdate != null) accent.primary.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.10f),
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                  ) {
-                    Column(
-                      modifier = Modifier.padding(14.dp),
-                      verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                      Text(
-                        text = when {
-                          availableUpdate != null -> "New version available: v${availableUpdate.versionName}"
-                          isCheckingForUpdate -> "Checking GitHub Releases for updates…"
-                          !updateStatusText.isNullOrBlank() -> updateStatusText
-                          else -> "Checks github.com/darkside281/HorizonTVLauncher Releases for new APK versions."
-                        },
-                        style = MaterialTheme.typography.bodySmall.copy(
-                          fontWeight = if (availableUpdate != null) FontWeight.SemiBold else FontWeight.Normal,
-                        ),
-                        color = if (availableUpdate != null) accent.primary else Color.White.copy(alpha = 0.78f),
-                      )
-                      Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                      ) {
-                        if (availableUpdate != null) {
-                          SettingsActionChip(
-                            icon = Icons.Rounded.Download,
-                            label = if (isDownloadingUpdate) "Downloading…" else "Update to v${availableUpdate.versionName}",
-                            accent = accent,
-                            highlighted = true,
-                            onClick = onOpenUpdateDialog,
-                            modifier = Modifier
-                              .weight(1f)
-                              .focusRequester(rightPaneEntryRequester)
-                              .focusProperties { left = activeTabRequester },
-                          )
-                        }
-                        SettingsActionChip(
-                          icon = Icons.Rounded.Refresh,
-                          label = if (isCheckingForUpdate) "Checking…" else "Check for Updates",
-                          accent = accent,
-                          highlighted = false,
-                          onClick = onCheckForUpdates,
-                          modifier = Modifier
-                            .weight(1f)
-                            .then(
-                              if (availableUpdate == null) {
-                                Modifier
-                                  .focusRequester(rightPaneEntryRequester)
-                                  .focusProperties { left = activeTabRequester }
-                              } else {
-                                Modifier
-                              },
-                            ),
-                        )
-                      }
-                    }
-                  }
-
                   SettingsFieldLabel("What's New in v2.5")
                   Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -2013,11 +2313,11 @@ fun SettingsOverlay(
                       verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                       val whatsNew = listOf(
-                        "JustWatch My Streaming Services — filter results to your subscriptions & Prime Video Channels (Paramount+, MGM+, Crunchyroll, Discovery+, Shudder, MUBI & more)",
-                        "Overview Screen Deep-Links — opening movies & TV shows jumps straight to the title details page on Prime Video, Netflix, Disney+, Apple TV, ITVX, Paramount+ & Crunchyroll",
-                        "Jellyfin Search Posters — vertical 2:3 movie & TV posters in search results",
-                        "Show/Hide App Titles Under Tiles — toggle under Customize → Home for a cleaner artwork-only dock",
-                        "Improved Search Navigation — cleaner empty search screen, organized Search settings & full D-pad return to Search Box and Close",
+                        "Country / Region & Ratings — pick your region (UK, US, CA, AU, IE, DE, FR, NL) for local streaming availability, age ratings (U, PG, 12, 15, 18 / PG-13, TV-MA) & Rotten Tomatoes Critics scores",
+                        "Show More Search Results — paginate through additional JustWatch results right inside Search",
+                        "Dedicated Updates Tab — check for updates on your schedule (Manual Only, Every 7 Days, or Automatic) with the latest release date & changelog",
+                        "Native TV Inputs (HDMI) — switch TV inputs right from the top bar on Android TV sets",
+                        "Reorganized Customize Menu — cleaner sub-tabs across Home, Search, Wallpapers & Screensaver for easier D-pad navigation",
                       )
                       whatsNew.forEach { bullet ->
                         Text(
@@ -2044,7 +2344,7 @@ fun SettingsOverlay(
                         "Custom Home Rows & Tiles — add, rename, reorder & lock rows, custom app icons, tile sizing & optional tile labels",
                         "Live Wallpapers & Screensaver — Jellyfin, Plex, Emby, TMDB & Reddit widescreen slideshows with ClearLogos, plus idle screensaver & Android DreamService",
                         "Live Weather — Open-Meteo 1–7 day forecast with 4 icon styles, sizing options & transparent mode",
-                        "Universal Search — live JustWatch UK availability, Jellyfin library search & direct streaming app shortcuts",
+                        "Universal Search — live JustWatch availability by region, age ratings, Rotten Tomatoes scores, Jellyfin library search & direct streaming app shortcuts",
                         "Backup & Restore — portable JSON backup of your full launcher setup across devices",
                       )
                       highlights.forEach { bullet ->
@@ -2089,6 +2389,7 @@ fun SettingsOverlay(
                     onClick = onOpenSelfAppInfo,
                     modifier = Modifier
                       .fillMaxWidth()
+                      .focusRequester(rightPaneEntryRequester)
                       .focusProperties { left = activeTabRequester },
                   )
                 }

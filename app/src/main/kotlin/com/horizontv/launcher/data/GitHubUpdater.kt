@@ -11,11 +11,17 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 interface AppUpdateDataSource {
+  suspend fun fetchLatestRelease(currentVersionName: String): Result<AppUpdateInfo?> =
+    checkForUpdate(currentVersionName)
+
   suspend fun checkForUpdate(currentVersionName: String): Result<AppUpdateInfo?>
   suspend fun downloadAndInstall(
     update: AppUpdateInfo,
@@ -29,7 +35,7 @@ class GitHubUpdater(
   private val repoName: String = "HorizonTVLauncher",
 ) : AppUpdateDataSource {
 
-  override suspend fun checkForUpdate(currentVersionName: String): Result<AppUpdateInfo?> =
+  override suspend fun fetchLatestRelease(currentVersionName: String): Result<AppUpdateInfo?> =
     withContext(Dispatchers.IO) {
       runCatching {
         val url = URL("https://api.github.com/repos/$repoOwner/$repoName/releases/latest")
@@ -57,33 +63,36 @@ class GitHubUpdater(
           }
           val tagName = root.optString("tag_name", "").trim()
           val remoteVersion = tagName.removePrefix("v").removePrefix("V").trim()
-          if (remoteVersion.isEmpty() || !isVersionNewer(remoteVersion, currentVersionName)) {
-            return@runCatching null
-          }
+          if (remoteVersion.isEmpty()) return@runCatching null
 
-          val assets = root.optJSONArray("assets") ?: return@runCatching null
-          var apkUrl: String? = null
+          val assets = root.optJSONArray("assets")
+          var apkUrl = ""
           var apkName = "HorizonTVLauncher-$tagName.apk"
           var apkSize = 0L
-          for (i in 0 until assets.length()) {
-            val asset = assets.optJSONObject(i) ?: continue
-            val name = asset.optString("name", "").trim()
-            val dlUrl = asset.optString("browser_download_url", "").trim()
-            if (name.endsWith(".apk", ignoreCase = true) && dlUrl.isNotEmpty()) {
-              apkUrl = dlUrl
-              apkName = name
-              apkSize = asset.optLong("size", 0L)
-              break
+          if (assets != null) {
+            for (i in 0 until assets.length()) {
+              val asset = assets.optJSONObject(i) ?: continue
+              val name = asset.optString("name", "").trim()
+              val dlUrl = asset.optString("browser_download_url", "").trim()
+              if (name.endsWith(".apk", ignoreCase = true) && dlUrl.isNotEmpty()) {
+                apkUrl = dlUrl
+                apkName = name
+                apkSize = asset.optLong("size", 0L)
+                break
+              }
             }
           }
-          val resolvedApkUrl = apkUrl ?: return@runCatching null
+
+          val rawPublished = root.optString("published_at", "").trim()
+          val formattedDate = formatReleaseDate(rawPublished)
 
           AppUpdateInfo(
             versionName = remoteVersion,
             tagName = tagName,
             releaseName = root.optString("name", "").trim().ifEmpty { "Horizon TV Launcher $tagName" },
             releaseNotes = root.optString("body", "").trim(),
-            apkUrl = resolvedApkUrl,
+            publishedAt = formattedDate,
+            apkUrl = apkUrl,
             apkFileName = apkName,
             apkSizeBytes = apkSize,
             htmlUrl = root.optString("html_url", "").trim(),
@@ -93,6 +102,29 @@ class GitHubUpdater(
         }
       }
     }
+
+  override suspend fun checkForUpdate(currentVersionName: String): Result<AppUpdateInfo?> =
+    fetchLatestRelease(currentVersionName).map { release ->
+      if (release != null &&
+        release.apkUrl.isNotEmpty() &&
+        isVersionNewer(release.versionName, currentVersionName)
+      ) {
+        release
+      } else {
+        null
+      }
+    }
+
+  private fun formatReleaseDate(isoTimestamp: String): String {
+    if (isoTimestamp.isBlank()) return ""
+    return runCatching {
+      val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+      }
+      val date = parser.parse(isoTimestamp) ?: return@runCatching isoTimestamp.substringBefore("T")
+      SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(date)
+    }.getOrDefault(isoTimestamp.substringBefore("T"))
+  }
 
   override suspend fun downloadAndInstall(
     update: AppUpdateInfo,

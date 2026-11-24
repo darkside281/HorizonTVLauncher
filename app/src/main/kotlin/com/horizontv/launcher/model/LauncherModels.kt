@@ -75,13 +75,32 @@ data class StreamingSearchItem(
   val title: String,
   val objectType: String,
   val year: Int?,
+  val ageCertification: String? = null,
   val imdbScore: Float? = null,
+  val tomatoMeter: Int? = null,
+  val certifiedFresh: Boolean = false,
   val posterUrl: String? = null,
   val poster: ImageBitmap? = null,
   val offers: List<StreamingOffer> = emptyList(),
 ) {
   val typeLabel: String
     get() = if (objectType.equals("SHOW", ignoreCase = true)) "TV Show" else "Movie"
+}
+
+enum class JustWatchRegion(val code: String, val label: String, val ratingExample: String) {
+  GB("GB", "United Kingdom", "U, PG, 12, 15, 18"),
+  US("US", "United States", "G, PG, PG-13, R, TV-MA"),
+  CA("CA", "Canada", "G, PG, 14A, 18A"),
+  AU("AU", "Australia", "G, PG, M, MA15+"),
+  IE("IE", "Ireland", "G, PG, 12A, 15A, 18"),
+  DE("DE", "Germany", "FSK 0, 6, 12, 16, 18"),
+  FR("FR", "France", "U, 10, 12, 16, 18"),
+  NL("NL", "Netherlands", "AL, 6, 9, 12, 16");
+
+  companion object {
+    fun fromCode(code: String?): JustWatchRegion =
+      entries.firstOrNull { it.code.equals(code, ignoreCase = true) } ?: GB
+  }
 }
 
 enum class JustWatchServiceCategory(val title: String) {
@@ -129,7 +148,7 @@ enum class JustWatchServicePreset(
   ACORN_PRIME("acorn_prime", "Acorn TV / BritBox (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("aac", "bba"), listOf("acorn tv (prime)", "acorntv amazon", "acorn tv amazon", "britbox amazon"), isPrimeChannel = true),
   HAYU_PRIME("hayu_prime", "Hayu (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("ahy", "hya"), listOf("hayu (prime)", "hayu amazon"), isPrimeChannel = true),
   INDIE_PRIME("indie_prime", "Curzon / Studiocanal / Arrow (Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("cac", "soa", "arr"), listOf("curzon (prime)", "studiocanal (prime)", "arrow tv (prime)", "curzon amazon", "studiocanal presents amazon", "arrow tv amazon"), isPrimeChannel = true),
-  MAX_SONY_PRIME("max_sony_prime", "Max / Lionsgate+ / Sony (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("aho", "sco", "lga"), listOf("max (prime)", "hbo max amazon", "sony pictures core", "lionsgate+ amazon"), isPrimeChannel = true),
+  MAX_SONY_PRIME("max_sony_prime", "HBO Max / Lionsgate+ / Sony (via Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("aho", "sco", "lga"), listOf("hbo max (prime)", "max (prime)", "hbo max amazon", "max amazon", "sony pictures core", "lionsgate+ amazon"), isPrimeChannel = true),
   SPECIALTY_PRIME("specialty_prime", "Hidive / History Hit / Docs (Prime)", JustWatchServiceCategory.PRIME_CHANNELS, setOf("hda", "hil", "dov", "pbm", "mqa", "mha"), listOf("hidive", "history hit", "docsville", "pbs america", "marquee tv", "mhz choice"), isPrimeChannel = true),
   ALL_PRIME_CHANNELS("all_prime_channels", "All Other Prime Video Channels", JustWatchServiceCategory.PRIME_CHANNELS, emptySet(), listOf("(prime)", "amazon channel"), isPrimeChannel = true),
 
@@ -423,6 +442,17 @@ data class WeatherData(
   val daily: List<DailyForecast>,
 )
 
+enum class UpdateCheckSchedule(val id: String, val label: String, val description: String) {
+  MANUAL("manual", "Manual Only", "Off — only check when you press Check for Updates"),
+  WEEKLY("weekly", "Every 7 Days", "Check automatically once a week"),
+  AUTOMATIC("automatic", "Automatic", "Check automatically whenever Horizon starts");
+
+  companion object {
+    fun fromId(id: String?): UpdateCheckSchedule =
+      entries.firstOrNull { it.id == id } ?: WEEKLY
+  }
+}
+
 data class WallpaperProviderConfig(
   val intervalSeconds: Int = 30,
   val showTitle: Boolean = true,
@@ -488,6 +518,9 @@ data class LauncherSettings(
   val justWatchServices: Set<String> = DEFAULT_JUSTWATCH_SERVICES,
   val justWatchIncludeRentBuy: Boolean = true,
   val justWatchHideUnmatchedTitles: Boolean = false,
+  val justWatchRegion: String = JustWatchRegion.GB.code,
+  val justWatchShowRottenTomatoes: Boolean = true,
+  val justWatchShowAgeRating: Boolean = true,
   val gridColumns: Int = 5,
   val hasInitializedFavorites: Boolean = false,
   val screensaverEnabled: Boolean = false,
@@ -503,7 +536,15 @@ data class LauncherSettings(
   val screensaverAmbientCycle: Boolean = true,
   val screensaverPhotoFolderUri: String? = null,
   val screensaverPhotoUris: List<String> = emptyList(),
+  val updateCheckSchedule: String = UpdateCheckSchedule.WEEKLY.id,
+  val lastUpdateCheckMillis: Long = 0L,
 ) {
+  val activeUpdateCheckSchedule: UpdateCheckSchedule
+    get() = UpdateCheckSchedule.fromId(updateCheckSchedule)
+
+  val activeJustWatchRegion: JustWatchRegion
+    get() = JustWatchRegion.fromCode(justWatchRegion)
+
   val activeScreensaverMode: ScreensaverMode
     get() = ScreensaverMode.fromId(screensaverMode)
 
@@ -666,6 +707,7 @@ data class AppUpdateInfo(
   val tagName: String,
   val releaseName: String,
   val releaseNotes: String,
+  val publishedAt: String = "",
   val apkUrl: String,
   val apkFileName: String,
   val apkSizeBytes: Long,
@@ -720,6 +762,7 @@ data class LauncherUiState(
   val tvInputs: List<TvInputSource> = emptyList(),
   val isTvInputsDialogOpen: Boolean = false,
   val availableUpdate: AppUpdateInfo? = null,
+  val latestRelease: AppUpdateInfo? = null,
   val showUpdateDialog: Boolean = false,
   val isCheckingForUpdate: Boolean = false,
   val isDownloadingUpdate: Boolean = false,

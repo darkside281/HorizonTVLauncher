@@ -76,6 +76,7 @@ import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinSearchItem
+import com.horizontv.launcher.model.JustWatchRegion
 import com.horizontv.launcher.model.LauncherSettings
 import com.horizontv.launcher.model.LauncherUiState
 import com.horizontv.launcher.model.MediaWallpaperProvider
@@ -84,6 +85,7 @@ import com.horizontv.launcher.model.ScreensaverMode
 import com.horizontv.launcher.model.SearchProviderFilter
 import com.horizontv.launcher.model.StreamingOffer
 import com.horizontv.launcher.model.TvInputSource
+import com.horizontv.launcher.model.UpdateCheckSchedule
 import com.horizontv.launcher.model.WeatherForecastSize
 import com.horizontv.launcher.model.WeatherIconStyle
 import com.horizontv.launcher.model.WeatherLocation
@@ -199,6 +201,9 @@ fun LauncherScreen(
   onClearAllJustWatchServices: () -> Unit = {},
   onToggleJustWatchIncludeRentBuy: () -> Unit = {},
   onToggleJustWatchHideUnmatchedTitles: () -> Unit = {},
+  onSetJustWatchRegion: (JustWatchRegion) -> Unit = {},
+  onToggleJustWatchShowRottenTomatoes: () -> Unit = {},
+  onToggleJustWatchShowAgeRating: () -> Unit = {},
   onToggleShowAllAppsSection: () -> Unit,
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTileTitles: () -> Unit,
@@ -239,6 +244,8 @@ fun LauncherScreen(
   onClearScreensaverPhotos: () -> Unit,
   onOpenSystemScreensaverSettings: () -> Unit,
   onCheckForUpdates: () -> Unit = {},
+  onLoadLatestRelease: () -> Unit = {},
+  onSetUpdateCheckSchedule: (UpdateCheckSchedule) -> Unit = {},
   onOpenUpdateDialog: () -> Unit = {},
   onDismissUpdateDialog: () -> Unit = {},
   onInstallUpdate: () -> Unit = {},
@@ -1096,6 +1103,9 @@ fun LauncherScreen(
         streamingHasMore = state.streamingHasMore,
         streamingError = state.streamingSearchError,
         isServiceFilterActive = state.settings.justWatchFilterServices || !state.settings.justWatchIncludeRentBuy,
+        justWatchRegionCode = state.settings.activeJustWatchRegion.code,
+        showRottenTomatoes = state.settings.justWatchShowRottenTomatoes,
+        showAgeRating = state.settings.justWatchShowAgeRating,
         externalSearchProviders = enabledExternalProviders,
         appsProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_APPS),
         jellyfinProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JELLYFIN),
@@ -1172,6 +1182,9 @@ fun LauncherScreen(
         onClearAllJustWatchServices = onClearAllJustWatchServices,
         onToggleJustWatchIncludeRentBuy = onToggleJustWatchIncludeRentBuy,
         onToggleJustWatchHideUnmatchedTitles = onToggleJustWatchHideUnmatchedTitles,
+        onSetJustWatchRegion = onSetJustWatchRegion,
+        onToggleJustWatchShowRottenTomatoes = onToggleJustWatchShowRottenTomatoes,
+        onToggleJustWatchShowAgeRating = onToggleJustWatchShowAgeRating,
         onToggleShowAllAppsSection = onToggleShowAllAppsSection,
         onToggleShowAddAppTile = onToggleShowAddAppTile,
         onToggleShowTileTitles = onToggleShowTileTitles,
@@ -1208,10 +1221,13 @@ fun LauncherScreen(
         onClearScreensaverPhotos = onClearScreensaverPhotos,
         onOpenSystemScreensaverSettings = onOpenSystemScreensaverSettings,
         availableUpdate = state.availableUpdate,
+        latestRelease = state.latestRelease,
         isCheckingForUpdate = state.isCheckingForUpdate,
         isDownloadingUpdate = state.isDownloadingUpdate,
         updateStatusText = state.updateStatusText,
         onCheckForUpdates = onCheckForUpdates,
+        onLoadLatestRelease = onLoadLatestRelease,
+        onSetUpdateCheckSchedule = onSetUpdateCheckSchedule,
         onOpenUpdateDialog = onOpenUpdateDialog,
       )
     }
