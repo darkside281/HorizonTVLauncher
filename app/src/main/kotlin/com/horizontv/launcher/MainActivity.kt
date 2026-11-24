@@ -12,6 +12,8 @@ import android.graphics.Color as AndroidColor
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -140,6 +142,35 @@ class MainActivity : ComponentActivity() {
     }
   }
 
+  private val voiceSearchLauncher = registerForActivityResult(
+    ActivityResultContracts.StartActivityForResult(),
+  ) { result ->
+    if (result.resultCode == RESULT_OK) {
+      val spoken = result.data
+        ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+        ?.firstOrNull { it.isNotBlank() }
+        ?.trim()
+      if (!spoken.isNullOrEmpty()) {
+        viewModel.updateSearchQuery(spoken)
+      }
+    }
+  }
+
+  private fun launchVoiceSearch() {
+    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+      putExtra(RecognizerIntent.EXTRA_PROMPT, "Search movies, TV shows & apps")
+      putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+    }
+    val launched = runCatching {
+      voiceSearchLauncher.launch(intent)
+      true
+    }.getOrDefault(false)
+    if (!launched) {
+      Toast.makeText(this, "Voice search is not available on this device", Toast.LENGTH_SHORT).show()
+    }
+  }
+
   private fun openSystemScreensaverSettings() {
     val opened = runCatching {
       startActivity(Intent(Settings.ACTION_DREAM_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -228,6 +259,7 @@ class MainActivity : ComponentActivity() {
       // Handle Back gracefully for overlays/dialogs and keep Home screen anchored
       BackHandler(enabled = true) {
         when {
+          state.pinPrompt != null -> viewModel.dismissPinPrompt()
           state.isScreensaverActive -> viewModel.stopScreensaver()
           state.isTvInputsDialogOpen -> viewModel.closeTvInputsDialog()
           state.showUpdateDialog -> viewModel.dismissUpdateDialog()
@@ -286,9 +318,19 @@ class MainActivity : ComponentActivity() {
           onResetCustomIcon = viewModel::resetCustomAppIcon,
           onHideApp = viewModel::hideApp,
           onUnhideApp = viewModel::unhideApp,
+          onToggleAppPinLock = viewModel::toggleAppPinLock,
+          onUnlockAppPin = viewModel::unlockAppPin,
+          onRequestSetPin = viewModel::requestSetPin,
+          onRequestChangePin = viewModel::requestChangePin,
+          onRequestRemovePin = viewModel::requestRemovePin,
+          onTogglePinProtectSettings = viewModel::togglePinProtectSettings,
+          onPinVerified = viewModel::onPinVerified,
+          onNewPinConfirmed = viewModel::onNewPinConfirmed,
+          onDismissPinPrompt = viewModel::dismissPinPrompt,
           onSelectFilter = viewModel::setFilter,
           onToggleSearch = viewModel::toggleSearch,
           onUpdateSearchQuery = viewModel::updateSearchQuery,
+          onVoiceSearch = ::launchVoiceSearch,
           onSelectSearchProvider = viewModel::setSearchProvider,
           onOpenJellyfinSearchItem = viewModel::openJellyfinSearchItem,
           onOpenStreamingOffer = viewModel::openStreamingOffer,

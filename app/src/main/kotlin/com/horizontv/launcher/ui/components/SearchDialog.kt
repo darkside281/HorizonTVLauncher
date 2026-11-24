@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Search
@@ -115,6 +116,7 @@ fun UniversalSearchDialog(
   webProviderEnabled: Boolean,
   accent: AccentPreset,
   onQueryChange: (String) -> Unit,
+  onVoiceSearch: () -> Unit = {},
   onSelectProvider: (SearchProviderFilter) -> Unit,
   onLaunchApp: (AppInfo) -> Unit,
   onOpenJellyfinItem: (JellyfinSearchItem) -> Unit,
@@ -126,6 +128,7 @@ fun UniversalSearchDialog(
   onDismiss: () -> Unit,
 ) {
   val inputRequester = remember { FocusRequester() }
+  val voiceButtonRequester = remember { FocusRequester() }
   val closeButtonRequester = remember { FocusRequester() }
   val firstFilterRequester = remember { FocusRequester() }
   val scrollState = rememberScrollState()
@@ -232,7 +235,7 @@ fun UniversalSearchDialog(
                   up = FocusRequester.Cancel
                   left = FocusRequester.Cancel
                   down = firstFilterRequester
-                  right = closeButtonRequester
+                  right = voiceButtonRequester
                 }
                 .onFocusChanged { focusState ->
                   if (focusState.isFocused) {
@@ -255,7 +258,7 @@ fun UniversalSearchDialog(
                       KeyEvent.KEYCODE_DPAD_RIGHT -> if (query.isEmpty()) {
                         focusManager.clearFocus(force = true)
                         hideDialogKeyboard()
-                        runCatching { closeButtonRequester.requestFocus() }
+                        runCatching { voiceButtonRequester.requestFocus() }
                         return@onPreviewKeyEvent true
                       }
                     }
@@ -306,6 +309,24 @@ fun UniversalSearchDialog(
             )
 
             QuickActionIcon(
+              icon = Icons.Rounded.Mic,
+              contentDescription = "Voice Search",
+              accent = accent,
+              onClick = {
+                hideDialogKeyboard()
+                onVoiceSearch()
+              },
+              modifier = Modifier
+                .focusRequester(voiceButtonRequester)
+                .focusProperties {
+                  up = FocusRequester.Cancel
+                  left = inputRequester
+                  right = closeButtonRequester
+                  down = firstFilterRequester
+                },
+            )
+
+            QuickActionIcon(
               icon = Icons.Rounded.Close,
               contentDescription = "Close Search",
               accent = accent,
@@ -315,7 +336,7 @@ fun UniversalSearchDialog(
                 .focusProperties {
                   up = FocusRequester.Cancel
                   right = FocusRequester.Cancel
-                  left = inputRequester
+                  left = voiceButtonRequester
                   down = firstFilterRequester
                 },
             )

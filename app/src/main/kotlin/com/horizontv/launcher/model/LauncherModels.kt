@@ -540,7 +540,16 @@ data class LauncherSettings(
   val screensaverPhotoUris: List<String> = emptyList(),
   val updateCheckSchedule: String = UpdateCheckSchedule.WEEKLY.id,
   val lastUpdateCheckMillis: Long = 0L,
+  val parentalPin: String = "",
+  val pinProtectSettings: Boolean = true,
+  val pinLockedPackages: Set<String> = emptySet(),
 ) {
+  val isPinEnabled: Boolean
+    get() = parentalPin.length == 4 && parentalPin.all { it.isDigit() }
+
+  fun isAppPinLocked(packageName: String): Boolean =
+    isPinEnabled && packageName in pinLockedPackages
+
   val activeUpdateCheckSchedule: UpdateCheckSchedule
     get() = UpdateCheckSchedule.fromId(updateCheckSchedule)
 
@@ -716,6 +725,28 @@ data class AppUpdateInfo(
   val htmlUrl: String,
 )
 
+enum class PinPromptMode {
+  VERIFY,
+  SET_NEW,
+  CONFIRM_NEW,
+}
+
+sealed class PinPendingAction {
+  data object OpenSettings : PinPendingAction()
+  data class LaunchApp(val app: AppInfo) : PinPendingAction()
+  data class ToggleAppLock(val app: AppInfo) : PinPendingAction()
+  data object SetNewPin : PinPendingAction()
+  data object ChangePin : PinPendingAction()
+  data object RemovePin : PinPendingAction()
+}
+
+data class PinPromptState(
+  val mode: PinPromptMode,
+  val title: String,
+  val subtitle: String,
+  val pendingAction: PinPendingAction,
+)
+
 data class LauncherUiState(
   val isLoading: Boolean = true,
   val isDefaultHome: Boolean = false,
@@ -770,6 +801,7 @@ data class LauncherUiState(
   val isDownloadingUpdate: Boolean = false,
   val updateDownloadProgress: Float = 0f,
   val updateStatusText: String? = null,
+  val pinPrompt: PinPromptState? = null,
   val statusMessage: String? = null,
 ) {
   private val decoratedApps: List<AppInfo>
@@ -837,6 +869,9 @@ data class LauncherUiState(
 
   val hiddenApps: List<AppInfo>
     get() = decoratedApps.filter { it.packageName in settings.hiddenPackages }
+
+  val lockedApps: List<AppInfo>
+    get() = decoratedApps.filter { it.packageName in settings.pinLockedPackages }.sortedBy { it.label.lowercase() }
 
   val filteredStreamingSearchResults: List<StreamingSearchItem>
     get() {

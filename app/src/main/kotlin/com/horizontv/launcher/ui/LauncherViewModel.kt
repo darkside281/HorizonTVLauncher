@@ -37,6 +37,9 @@ import com.horizontv.launcher.model.JustWatchServicePreset
 import com.horizontv.launcher.model.LauncherSettings
 import com.horizontv.launcher.model.LauncherUiState
 import com.horizontv.launcher.model.MediaWallpaperProvider
+import com.horizontv.launcher.model.PinPendingAction
+import com.horizontv.launcher.model.PinPromptMode
+import com.horizontv.launcher.model.PinPromptState
 import com.horizontv.launcher.model.RedditSort
 import com.horizontv.launcher.model.ReorderTarget
 import com.horizontv.launcher.model.ScreensaverMode
@@ -221,6 +224,20 @@ class LauncherViewModel(
   }
 
   fun launchApp(app: AppInfo) {
+    if (_uiState.value.settings.isAppPinLocked(app.packageName)) {
+      _uiState.update {
+        it.copy(
+          menuTarget = null,
+          pinPrompt = PinPromptState(
+            mode = PinPromptMode.VERIFY,
+            title = "App Locked",
+            subtitle = "Enter 4-digit PIN to open ${app.label}",
+            pendingAction = PinPendingAction.LaunchApp(app),
+          ),
+        )
+      }
+      return
+    }
     if (!appDataSource.launchApp(app)) {
       showStatus("Unable to launch ${app.label}")
     }
@@ -1523,6 +1540,22 @@ class LauncherViewModel(
   }
 
   fun openSettings() {
+    val s = _uiState.value.settings
+    if (s.isPinEnabled && s.pinProtectSettings) {
+      _uiState.update {
+        it.copy(
+          menuTarget = null,
+          reorderingTarget = null,
+          pinPrompt = PinPromptState(
+            mode = PinPromptMode.VERIFY,
+            title = "Customize Locked",
+            subtitle = "Enter 4-digit PIN to open Customize",
+            pendingAction = PinPendingAction.OpenSettings,
+          ),
+        )
+      }
+      return
+    }
     _uiState.update {
       it.copy(
         isSettingsOpen = true,
@@ -1534,6 +1567,157 @@ class LauncherViewModel(
 
   fun closeSettings() {
     _uiState.update { it.copy(isSettingsOpen = false) }
+  }
+
+  // --- PIN Lock (Parental Controls) ---
+
+  fun requestSetPin() {
+    _uiState.update {
+      it.copy(
+        pinPrompt = PinPromptState(
+          mode = PinPromptMode.SET_NEW,
+          title = "Set 4-Digit PIN",
+          subtitle = "Choose a 4-digit PIN for parental controls",
+          pendingAction = PinPendingAction.SetNewPin,
+        ),
+      )
+    }
+  }
+
+  fun requestChangePin() {
+    if (!_uiState.value.settings.isPinEnabled) {
+      requestSetPin()
+      return
+    }
+    _uiState.update {
+      it.copy(
+        pinPrompt = PinPromptState(
+          mode = PinPromptMode.VERIFY,
+          title = "Change PIN",
+          subtitle = "Enter your current 4-digit PIN first",
+          pendingAction = PinPendingAction.ChangePin,
+        ),
+      )
+    }
+  }
+
+  fun requestRemovePin() {
+    if (!_uiState.value.settings.isPinEnabled) return
+    _uiState.update {
+      it.copy(
+        pinPrompt = PinPromptState(
+          mode = PinPromptMode.VERIFY,
+          title = "Remove PIN Lock",
+          subtitle = "Enter your 4-digit PIN to turn off PIN Lock",
+          pendingAction = PinPendingAction.RemovePin,
+        ),
+      )
+    }
+  }
+
+  fun togglePinProtectSettings() {
+    val next = !_uiState.value.settings.pinProtectSettings
+    updateSettings { it.copy(pinProtectSettings = next) }
+    showStatus(if (next) "PIN required to open Customize" else "Customize unlocked without PIN")
+  }
+
+  fun toggleAppPinLock(app: AppInfo) {
+    val state = _uiState.value
+    val s = state.settings
+    if (!s.isPinEnabled) {
+      showStatus("Set a 4-digit PIN in Customize → Parental Controls first")
+      return
+    }
+    val currentlyLocked = app.packageName in s.pinLockedPackages
+    if (currentlyLocked && !state.isSettingsOpen) {
+      _uiState.update {
+        it.copy(
+          menuTarget = null,
+          pinPrompt = PinPromptState(
+            mode = PinPromptMode.VERIFY,
+            title = "Unlock App",
+            subtitle = "Enter PIN to remove lock from ${app.label}",
+            pendingAction = PinPendingAction.ToggleAppLock(app),
+          ),
+        )
+      }
+      return
+    }
+    updateSettings {
+      val updated = if (currentlyLocked) {
+        it.pinLockedPackages - app.packageName
+      } else {
+        it.pinLockedPackages + app.packageName
+      }
+      it.copy(pinLockedPackages = updated)
+    }
+    _uiState.update { it.copy(menuTarget = null) }
+    showStatus(if (currentlyLocked) "${app.label} unlocked" else "${app.label} locked with PIN")
+  }
+
+  fun unlockAppPin(packageName: String) {
+    val label = _uiState.value.allApps.firstOrNull { it.packageName == packageName }?.label ?: "App"
+    updateSettings { it.copy(pinLockedPackages = it.pinLockedPackages - packageName) }
+    showStatus("$label unlocked")
+  }
+
+  fun onPinVerified() {
+    val prompt = _uiState.value.pinPrompt ?: return
+    _uiState.update { it.copy(pinPrompt = null) }
+    when (val action = prompt.pendingAction) {
+      PinPendingAction.OpenSettings -> {
+        _uiState.update {
+          it.copy(
+            isSettingsOpen = true,
+            menuTarget = null,
+            reorderingTarget = null,
+          )
+        }
+      }
+      is PinPendingAction.LaunchApp -> {
+        if (!appDataSource.launchApp(action.app)) {
+          showStatus("Unable to launch ${action.app.label}")
+        }
+      }
+      is PinPendingAction.ToggleAppLock -> {
+        updateSettings { it.copy(pinLockedPackages = it.pinLockedPackages - action.app.packageName) }
+        showStatus("${action.app.label} unlocked")
+      }
+      PinPendingAction.ChangePin -> {
+        _uiState.update {
+          it.copy(
+            pinPrompt = PinPromptState(
+              mode = PinPromptMode.SET_NEW,
+              title = "New 4-Digit PIN",
+              subtitle = "Enter your new 4-digit PIN",
+              pendingAction = PinPendingAction.SetNewPin,
+            ),
+          )
+        }
+      }
+      PinPendingAction.RemovePin -> {
+        updateSettings {
+          it.copy(
+            parentalPin = "",
+            pinLockedPackages = emptySet(),
+          )
+        }
+        showStatus("PIN Lock disabled")
+      }
+      PinPendingAction.SetNewPin -> Unit
+    }
+  }
+
+  fun onNewPinConfirmed(newPin: String) {
+    val clean = newPin.filter { it.isDigit() }.take(4)
+    if (clean.length != 4) return
+    updateSettings { it.copy(parentalPin = clean) }
+    _uiState.update { it.copy(pinPrompt = null) }
+    showStatus("4-digit PIN saved")
+  }
+
+  fun dismissPinPrompt() {
+    _uiState.update { it.copy(pinPrompt = null) }
   }
 
   fun selectTheme(themeId: String) {

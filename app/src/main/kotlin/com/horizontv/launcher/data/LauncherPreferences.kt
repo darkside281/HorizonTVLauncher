@@ -71,6 +71,11 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("showTvInputsButton", settings.showTvInputsButton)
     root.put("lockHomeLayout", settings.lockHomeLayout)
     root.put("updateCheckSchedule", settings.updateCheckSchedule)
+    root.put("parentalPin", settings.parentalPin)
+    root.put("pinProtectSettings", settings.pinProtectSettings)
+    val pinLockedArr = JSONArray()
+    settings.pinLockedPackages.sorted().forEach { pinLockedArr.put(it) }
+    root.put("pinLockedPackages", pinLockedArr)
     root.put("homeTileSize", settings.homeTileSize)
     val disabledSearchArr = JSONArray()
     settings.disabledSearchProviders.sorted().forEach { disabledSearchArr.put(it) }
@@ -260,6 +265,24 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       updateCheckSchedule = UpdateCheckSchedule.fromId(
         root.optString("updateCheckSchedule", existing.updateCheckSchedule),
       ).id,
+      parentalPin = root.optString("parentalPin", existing.parentalPin)
+        .filter { it.isDigit() }
+        .take(4)
+        .let { if (it.length == 4) it else "" },
+      pinProtectSettings = root.optBoolean("pinProtectSettings", existing.pinProtectSettings),
+      pinLockedPackages = if (root.has("pinLockedPackages")) {
+        val arr = root.optJSONArray("pinLockedPackages")
+        buildSet {
+          if (arr != null) {
+            for (i in 0 until arr.length()) {
+              val pkg = arr.optString(i, "").trim()
+              if (pkg.isNotEmpty()) add(pkg)
+            }
+          }
+        }
+      } else {
+        existing.pinLockedPackages
+      },
       homeTileSize = HomeTileSize.fromId(
         root.optString("homeTileSize", existing.homeTileSize),
       ).id,
@@ -553,6 +576,11 @@ class LauncherPreferences(context: Context) : SettingsStore {
         prefs.getString(KEY_UPDATE_CHECK_SCHEDULE, UpdateCheckSchedule.WEEKLY.id),
       ).id,
       lastUpdateCheckMillis = prefs.getLong(KEY_LAST_UPDATE_CHECK_MS, 0L),
+      parentalPin = (prefs.getString(KEY_PARENTAL_PIN, "") ?: "")
+        .filter { it.isDigit() }
+        .let { if (it.length == 4) it else "" },
+      pinProtectSettings = prefs.getBoolean(KEY_PIN_PROTECT_SETTINGS, true),
+      pinLockedPackages = prefs.getStringSet(KEY_PIN_LOCKED_PACKAGES, emptySet())?.toSet() ?: emptySet(),
     )
   }
 
@@ -640,6 +668,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putString(KEY_SS_PHOTO_URIS, encodeStringList(settings.screensaverPhotoUris))
       .putString(KEY_UPDATE_CHECK_SCHEDULE, settings.updateCheckSchedule)
       .putLong(KEY_LAST_UPDATE_CHECK_MS, settings.lastUpdateCheckMillis)
+      .putString(KEY_PARENTAL_PIN, settings.parentalPin)
+      .putBoolean(KEY_PIN_PROTECT_SETTINGS, settings.pinProtectSettings)
+      .putStringSet(KEY_PIN_LOCKED_PACKAGES, settings.pinLockedPackages)
       .apply()
   }
 
@@ -839,6 +870,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_SS_PHOTO_URIS = "screensaver_photo_uris_json"
     private const val KEY_UPDATE_CHECK_SCHEDULE = "update_check_schedule"
     private const val KEY_LAST_UPDATE_CHECK_MS = "last_update_check_millis"
+    private const val KEY_PARENTAL_PIN = "parental_pin"
+    private const val KEY_PIN_PROTECT_SETTINGS = "pin_protect_settings"
+    private const val KEY_PIN_LOCKED_PACKAGES = "pin_locked_packages"
   }
 }
 

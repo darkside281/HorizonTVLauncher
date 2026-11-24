@@ -95,6 +95,7 @@ import com.horizontv.launcher.ui.components.AmbientBackground
 import com.horizontv.launcher.ui.components.AppActionDialog
 import com.horizontv.launcher.ui.components.AppGridTile
 import com.horizontv.launcher.ui.components.AppUpdateDialog
+import com.horizontv.launcher.ui.components.PinDialog
 import com.horizontv.launcher.ui.components.FavoriteBannerCard
 import com.horizontv.launcher.ui.components.JellyfinSetupDialog
 import com.horizontv.launcher.ui.components.LauncherTopBar
@@ -145,9 +146,19 @@ fun LauncherScreen(
   onResetCustomIcon: (String) -> Unit,
   onHideApp: (String) -> Unit,
   onUnhideApp: (String) -> Unit,
+  onToggleAppPinLock: (AppInfo) -> Unit = {},
+  onUnlockAppPin: (String) -> Unit = {},
+  onRequestSetPin: () -> Unit = {},
+  onRequestChangePin: () -> Unit = {},
+  onRequestRemovePin: () -> Unit = {},
+  onTogglePinProtectSettings: () -> Unit = {},
+  onPinVerified: () -> Unit = {},
+  onNewPinConfirmed: (String) -> Unit = {},
+  onDismissPinPrompt: () -> Unit = {},
   onSelectFilter: (AppFilter) -> Unit,
   onToggleSearch: () -> Unit,
   onUpdateSearchQuery: (String) -> Unit,
+  onVoiceSearch: () -> Unit = {},
   onSelectSearchProvider: (SearchProviderFilter) -> Unit,
   onOpenJellyfinSearchItem: (JellyfinSearchItem) -> Unit,
   onOpenStreamingOffer: (StreamingOffer) -> Unit,
@@ -713,6 +724,7 @@ fun LauncherScreen(
                     onMoveApp = { pkg, delta -> onMoveAppInRow(heroRow.id, pkg, delta) },
                     onFinishReorder = onStopReordering,
                     showTileTitles = state.settings.showTileTitles,
+                    isAppPinLocked = { pkg -> state.settings.isAppPinLocked(pkg) },
                     showAddTile = state.settings.showAddAppTile && !state.settings.lockHomeLayout,
                     onAddApps = { onOpenAddAppsToRow(heroRow.id) },
                   )
@@ -761,6 +773,7 @@ fun LauncherScreen(
                       onMoveApp = { pkg, delta -> onMoveAppInRow(extraRow.id, pkg, delta) },
                       onFinishReorder = onStopReordering,
                       showTileTitles = state.settings.showTileTitles,
+                      isAppPinLocked = { pkg -> state.settings.isAppPinLocked(pkg) },
                       showAddTile = state.settings.showAddAppTile && !state.settings.lockHomeLayout,
                       onAddApps = { onOpenAddAppsToRow(extraRow.id) },
                     )
@@ -878,6 +891,7 @@ fun LauncherScreen(
                               accent = accent,
                               cardSurface = theme.cardSurface,
                               isFavorite = app.packageName in pinnedSet,
+                              isPinLocked = state.settings.isAppPinLocked(app.packageName),
                               onFocused = {
                                 onAppFocused(app)
                                 val targetY = if (rowIndex == 0) {
@@ -944,6 +958,8 @@ fun LauncherScreen(
         allRows = state.settings.rows,
         sourceRowId = target.rowId,
         isLayoutLocked = state.settings.lockHomeLayout,
+        isPinEnabled = state.settings.isPinEnabled,
+        isAppPinLocked = state.settings.isAppPinLocked(target.app.packageName),
         accent = accent,
         onDismiss = onCloseAppMenu,
         onLaunch = { onLaunchApp(target.app) },
@@ -955,6 +971,7 @@ fun LauncherScreen(
         onPickCustomIcon = { onPickCustomIcon(target.app.packageName) },
         onResetCustomIcon = { onResetCustomIcon(target.app.packageName) },
         onHideApp = { onHideApp(target.app.packageName) },
+        onTogglePinLock = { onToggleAppPinLock(target.app) },
         onOpenAppInfo = { onOpenAppInfo(target.app.packageName) },
         onUninstall = { onUninstallApp(target.app.packageName) },
       )
@@ -1114,6 +1131,7 @@ fun LauncherScreen(
         webProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_WEB),
         accent = accent,
         onQueryChange = onUpdateSearchQuery,
+        onVoiceSearch = onVoiceSearch,
         onSelectProvider = onSelectSearchProvider,
         onLaunchApp = onLaunchApp,
         onOpenJellyfinItem = onOpenJellyfinSearchItem,
@@ -1198,6 +1216,12 @@ fun LauncherScreen(
         onSetGridColumns = onSetGridColumns,
         onToggleShowNonLeanback = onToggleShowNonLeanback,
         onUnhideApp = onUnhideApp,
+        lockedApps = state.lockedApps,
+        onRequestSetPin = onRequestSetPin,
+        onRequestChangePin = onRequestChangePin,
+        onRequestRemovePin = onRequestRemovePin,
+        onTogglePinProtectSettings = onTogglePinProtectSettings,
+        onUnlockAppPin = onUnlockAppPin,
         onOpenHomeSettings = onOpenHomeSettings,
         onOpenPlayStore = onOpenPlayStore,
         onBackupConfig = onBackupConfig,
@@ -1254,6 +1278,18 @@ fun LauncherScreen(
       )
     }
 
+    val pinPrompt = state.pinPrompt
+    if (pinPrompt != null) {
+      PinDialog(
+        prompt = pinPrompt,
+        currentPin = state.settings.parentalPin,
+        accent = accent,
+        onPinVerified = onPinVerified,
+        onNewPinConfirmed = onNewPinConfirmed,
+        onDismiss = onDismissPinPrompt,
+      )
+    }
+
     // Full-Screen Idle / Preview Screensaver Overlay
     AnimatedVisibility(
       visible = state.isScreensaverActive,
@@ -1295,6 +1331,7 @@ private fun CustomAppRowSection(
   onMoveApp: (String, Int) -> Unit,
   onFinishReorder: () -> Unit,
   showTileTitles: Boolean,
+  isAppPinLocked: (String) -> Boolean = { false },
   showAddTile: Boolean,
   onAddApps: () -> Unit,
 ) {
@@ -1343,6 +1380,7 @@ private fun CustomAppRowSection(
           onFinishReorder = onFinishReorder,
           tileSize = tileSize,
           showTitle = showTileTitles,
+          isPinLocked = isAppPinLocked(app.packageName),
           blockLeft = index == 0,
           blockRight = index == row.apps.lastIndex && !hasAddTile,
           cardFocusRequester = focusRequesterFor(app.packageName),

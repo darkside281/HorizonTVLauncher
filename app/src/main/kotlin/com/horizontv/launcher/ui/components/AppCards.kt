@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +91,7 @@ fun FavoriteBannerCard(
   modifier: Modifier = Modifier,
   tileSize: HomeTileSize = HomeTileSize.MEDIUM,
   showTitle: Boolean = true,
+  isPinLocked: Boolean = false,
   blockLeft: Boolean = false,
   blockRight: Boolean = false,
   cardFocusRequester: FocusRequester = remember { FocusRequester() },
@@ -268,6 +270,24 @@ fun FavoriteBannerCard(
           }
         }
 
+        if (isPinLocked && !isReordering) {
+          Box(
+            modifier = Modifier
+              .align(Alignment.TopEnd)
+              .padding(8.dp)
+              .size(24.dp)
+              .background(Color.Black.copy(alpha = 0.68f), CircleShape),
+            contentAlignment = Alignment.Center,
+          ) {
+            Icon(
+              imageVector = Icons.Rounded.Lock,
+              contentDescription = "PIN Locked",
+              tint = Color.White,
+              modifier = Modifier.size(13.dp),
+            )
+          }
+        }
+
         if (isReordering) {
           Box(
             modifier = Modifier
@@ -341,6 +361,7 @@ fun AppGridTile(
   accent: AccentPreset,
   cardSurface: Color,
   isFavorite: Boolean,
+  isPinLocked: Boolean = false,
   onFocused: () -> Unit,
   onLaunch: () -> Unit,
   onOpenMenu: () -> Unit,
@@ -450,6 +471,24 @@ fun AppGridTile(
           }
         }
 
+        if (isPinLocked) {
+          Box(
+            modifier = Modifier
+              .align(Alignment.TopStart)
+              .padding(8.dp)
+              .size(22.dp)
+              .background(Color.Black.copy(alpha = 0.68f), CircleShape),
+            contentAlignment = Alignment.Center,
+          ) {
+            Icon(
+              imageVector = Icons.Rounded.Lock,
+              contentDescription = "PIN Locked",
+              tint = Color.White,
+              modifier = Modifier.size(12.dp),
+            )
+          }
+        }
+
         if (isFavorite) {
           Box(
             modifier = Modifier
@@ -499,6 +538,7 @@ fun AddFavoriteTile(
   modifier: Modifier = Modifier,
   tileSize: HomeTileSize = HomeTileSize.MEDIUM,
   showTitle: Boolean = true,
+  isPinLocked: Boolean = false,
   blockLeft: Boolean = false,
   blockRight: Boolean = false,
   cardFocusRequester: FocusRequester = remember { FocusRequester() },

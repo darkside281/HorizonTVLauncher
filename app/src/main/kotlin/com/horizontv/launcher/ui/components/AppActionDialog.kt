@@ -28,6 +28,8 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
@@ -67,6 +69,8 @@ fun AppActionDialog(
   allRows: List<AppRow>,
   sourceRowId: String?,
   isLayoutLocked: Boolean,
+  isPinEnabled: Boolean = false,
+  isAppPinLocked: Boolean = false,
   accent: AccentPreset,
   onDismiss: () -> Unit,
   onLaunch: () -> Unit,
@@ -78,6 +82,7 @@ fun AppActionDialog(
   onPickCustomIcon: () -> Unit,
   onResetCustomIcon: () -> Unit,
   onHideApp: () -> Unit,
+  onTogglePinLock: () -> Unit = {},
   onOpenAppInfo: () -> Unit,
   onUninstall: () -> Unit,
 ) {
@@ -289,6 +294,15 @@ fun AppActionDialog(
               label = "Hide App",
               accent = accent,
               onClick = onHideApp,
+            )
+          }
+
+          if (isPinEnabled) {
+            ActionMenuRow(
+              icon = if (isAppPinLocked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+              label = if (isAppPinLocked) "Unlock App (Remove PIN)" else "Lock App with PIN",
+              accent = accent,
+              onClick = onTogglePinLock,
             )
           }
 

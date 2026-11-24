@@ -37,6 +37,8 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PhotoLibrary
@@ -113,6 +115,7 @@ private enum class SettingsCategory(
   WEATHER("Weather", "Location, 1–7 day forecast, size & icon style", Icons.Rounded.Cloud),
   APPEARANCE("Appearance", "Ambient themes, custom wallpaper & accent color", Icons.Rounded.Palette),
   SYSTEM("Launcher & Apps", "Default launcher, Play Store, apps & backup", Icons.Rounded.Settings),
+  PARENTAL("Parental Controls", "4-digit PIN lock for Customize & protected apps", Icons.Rounded.Lock),
   UPDATES("Updates", "Check for updates, schedule & latest changelog", Icons.Rounded.Download),
   ABOUT("About", "Version, features & launcher details", Icons.Rounded.Info),
 }
@@ -188,6 +191,12 @@ fun SettingsOverlay(
   onSetGridColumns: (Int) -> Unit,
   onToggleShowNonLeanback: () -> Unit,
   onUnhideApp: (String) -> Unit,
+  lockedApps: List<AppInfo> = emptyList(),
+  onRequestSetPin: () -> Unit = {},
+  onRequestChangePin: () -> Unit = {},
+  onRequestRemovePin: () -> Unit = {},
+  onTogglePinProtectSettings: () -> Unit = {},
+  onUnlockAppPin: (String) -> Unit = {},
   onOpenHomeSettings: () -> Unit,
   onOpenPlayStore: () -> Unit,
   onBackupConfig: () -> Unit,
@@ -343,6 +352,11 @@ fun SettingsOverlay(
                     }
                     SettingsCategory.APPEARANCE -> LauncherPalettes.accentById(settings.accentId).name
                     SettingsCategory.SYSTEM -> if (isDefaultHome) "Default Active ✓" else "Set Default"
+                    SettingsCategory.PARENTAL -> if (settings.isPinEnabled) {
+                      "PIN Active • ${settings.pinLockedPackages.size} locked"
+                    } else {
+                      "Off"
+                    }
                     SettingsCategory.UPDATES -> if (availableUpdate != null) {
                       "Update: v${availableUpdate.versionName}"
                     } else {
@@ -2078,6 +2092,105 @@ fun SettingsOverlay(
                   }
                 }
 
+                SettingsCategory.PARENTAL -> {
+                  SettingsFieldLabel("4-Digit PIN Lock")
+                  if (!settings.isPinEnabled) {
+                    Surface(
+                      shape = RoundedCornerShape(14.dp),
+                      color = Color.White.copy(alpha = 0.05f),
+                      border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                      modifier = Modifier.fillMaxWidth(),
+                    ) {
+                      Text(
+                        text = "Set a 4-digit D-pad PIN to lock Customize settings and protect specific apps from being opened by kids or guests.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White.copy(alpha = 0.72f),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                      )
+                    }
+                    SettingsActionChip(
+                      icon = Icons.Rounded.Lock,
+                      label = "Set 4-Digit PIN…",
+                      accent = accent,
+                      highlighted = true,
+                      onClick = onRequestSetPin,
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(rightPaneEntryRequester)
+                        .focusProperties { left = activeTabRequester },
+                    )
+                  } else {
+                    SettingsToggleRow(
+                      title = "Require PIN for Customize",
+                      subtitle = if (settings.pinProtectSettings) {
+                        "Protected — 4-digit PIN required to open Customize & unlock layout"
+                      } else {
+                        "Off — Customize opens without PIN (locked apps still require PIN)"
+                      },
+                      checked = settings.pinProtectSettings,
+                      accent = accent,
+                      onClick = onTogglePinProtectSettings,
+                      modifier = Modifier
+                        .focusRequester(rightPaneEntryRequester)
+                        .focusProperties { left = activeTabRequester },
+                    )
+
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      SettingsActionChip(
+                        icon = Icons.Rounded.Lock,
+                        label = "Change PIN…",
+                        accent = accent,
+                        highlighted = false,
+                        onClick = onRequestChangePin,
+                        modifier = Modifier
+                          .weight(1f)
+                          .focusProperties { left = activeTabRequester },
+                      )
+                      SettingsActionChip(
+                        icon = Icons.Rounded.LockOpen,
+                        label = "Remove PIN…",
+                        accent = accent,
+                        highlighted = false,
+                        onClick = onRequestRemovePin,
+                        modifier = Modifier.weight(1f),
+                      )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SettingsFieldLabel("PIN-Locked Apps (${lockedApps.size})")
+                    if (lockedApps.isEmpty()) {
+                      Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.White.copy(alpha = 0.05f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                        modifier = Modifier.fillMaxWidth(),
+                      ) {
+                        Text(
+                          text = "No apps locked yet. Hold OK on any app on the Home screen and choose \"Lock App with PIN\".",
+                          style = MaterialTheme.typography.bodySmall,
+                          color = Color.White.copy(alpha = 0.65f),
+                          modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        )
+                      }
+                    } else {
+                      Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        lockedApps.forEach { lockedApp ->
+                          HiddenAppRestoreRow(
+                            app = lockedApp,
+                            accent = accent,
+                            buttonLabel = "Unlock",
+                            onRestore = { onUnlockAppPin(lockedApp.packageName) },
+                            modifier = Modifier.focusProperties { left = activeTabRequester },
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+
                 SettingsCategory.UPDATES -> {
                   LaunchedEffect(Unit) {
                     onLoadLatestRelease()
@@ -2984,6 +3097,7 @@ private fun HiddenAppRestoreRow(
   accent: AccentPreset,
   onRestore: () -> Unit,
   modifier: Modifier = Modifier,
+  buttonLabel: String = "Restore",
 ) {
   var isFocused by remember { mutableStateOf(false) }
 
@@ -3017,13 +3131,13 @@ private fun HiddenAppRestoreRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
       ) {
         Icon(
-          imageVector = Icons.Rounded.Restore,
-          contentDescription = "Restore",
+          imageVector = if (buttonLabel == "Unlock") Icons.Rounded.LockOpen else Icons.Rounded.Restore,
+          contentDescription = buttonLabel,
           tint = if (isFocused) accent.onPrimary else accent.primary,
           modifier = Modifier.size(18.dp),
         )
         Text(
-          text = "Restore",
+          text = buttonLabel,
           style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
           color = if (isFocused) accent.onPrimary else accent.primary,
         )
