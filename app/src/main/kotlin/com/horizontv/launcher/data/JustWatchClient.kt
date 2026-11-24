@@ -11,12 +11,25 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
+data class StreamingSearchPage(
+  val items: List<StreamingSearchItem>,
+  val hasNextPage: Boolean = false,
+  val endCursor: String? = null,
+)
+
 interface StreamingSearchDataSource {
   suspend fun searchTitles(
     query: String,
     countryCode: String = "GB",
     limit: Int = 8,
   ): Result<List<StreamingSearchItem>>
+
+  suspend fun searchTitlesPage(
+    query: String,
+    countryCode: String = "GB",
+    limit: Int = 8,
+    afterCursor: String? = null,
+  ): Result<StreamingSearchPage> = searchTitles(query, countryCode, limit).map { StreamingSearchPage(it) }
 
   suspend fun downloadPoster(url: String): ImageBitmap?
 }
@@ -27,10 +40,19 @@ class JustWatchClient : StreamingSearchDataSource {
     query: String,
     countryCode: String,
     limit: Int,
-  ): Result<List<StreamingSearchItem>> = withContext(Dispatchers.IO) {
+  ): Result<List<StreamingSearchItem>> =
+    searchTitlesPage(query = query, countryCode = countryCode, limit = limit, afterCursor = null)
+      .map { it.items }
+
+  override suspend fun searchTitlesPage(
+    query: String,
+    countryCode: String,
+    limit: Int,
+    afterCursor: String?,
+  ): Result<StreamingSearchPage> = withContext(Dispatchers.IO) {
     runCatching {
       val trimmed = query.trim()
-      if (trimmed.length < 2) return@runCatching emptyList()
+      if (trimmed.length < 2) return@runCatching StreamingSearchPage(emptyList())
 
       val payload = JSONObject().apply {
         put("operationName", "GetSuggestedTitles")
@@ -39,7 +61,12 @@ class JustWatchClient : StreamingSearchDataSource {
           JSONObject().apply {
             put("country", countryCode.uppercase())
             put("language", "en")
-            put("first", limit.coerceIn(1, 12))
+            put("first", limit.coerceIn(1, 20))
+            if (!afterCursor.isNullOrBlank()) {
+              put("after", afterCursor)
+            } else {
+              put("after", JSONObject.NULL)
+            }
             put("filter", JSONObject().put("searchQuery", trimmed))
           },
         )
@@ -67,7 +94,7 @@ class JustWatchClient : StreamingSearchDataSource {
         if (code !in 200..299) {
           throw IllegalStateException("JustWatch returned HTTP $code")
         }
-        parseSearchResponse(raw)
+        parseSearchPage(raw)
       } finally {
         conn.disconnect()
       }
@@ -99,12 +126,16 @@ class JustWatchClient : StreamingSearchDataSource {
     }.getOrNull()
   }
 
-  private fun parseSearchResponse(rawJson: String): List<StreamingSearchItem> {
+  private fun parseSearchPage(rawJson: String): StreamingSearchPage {
     val root = JSONObject(rawJson)
-    val edges = root.optJSONObject("data")
+    val popular = root.optJSONObject("data")
       ?.optJSONObject("popularTitles")
-      ?.optJSONArray("edges")
-      ?: return emptyList()
+      ?: return StreamingSearchPage(emptyList())
+    val pageInfo = popular.optJSONObject("pageInfo")
+    val hasNextPage = pageInfo?.optBoolean("hasNextPage", false) ?: false
+    val endCursor = pageInfo?.optString("endCursor", "")?.trim()?.ifEmpty { null }
+    val edges = popular.optJSONArray("edges")
+      ?: return StreamingSearchPage(emptyList(), hasNextPage = false, endCursor = null)
 
     val results = mutableListOf<StreamingSearchItem>()
     for (i in 0 until edges.length()) {
@@ -190,7 +221,11 @@ class JustWatchClient : StreamingSearchDataSource {
         ),
       )
     }
-    return results
+    return StreamingSearchPage(
+      items = results,
+      hasNextPage = hasNextPage && endCursor != null && results.isNotEmpty(),
+      endCursor = endCursor,
+    )
   }
 
   private fun normalizeProviderName(rawName: String, shortName: String): String {
@@ -338,8 +373,12 @@ class JustWatchClient : StreamingSearchDataSource {
     private const val ENDPOINT = "https://apis.justwatch.com/graphql"
 
     private const val SEARCH_GRAPHQL_QUERY = """
-      query GetSuggestedTitles(${'$'}country: Country!, ${'$'}language: Language!, ${'$'}first: Int!, ${'$'}filter: TitleFilter) {
-        popularTitles(country: ${'$'}country, first: ${'$'}first, filter: ${'$'}filter) {
+      query GetSuggestedTitles(${'$'}country: Country!, ${'$'}language: Language!, ${'$'}first: Int!, ${'$'}after: String, ${'$'}filter: TitleFilter) {
+        popularTitles(country: ${'$'}country, first: ${'$'}first, after: ${'$'}after, filter: ${'$'}filter) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
           edges {
             node {
               id

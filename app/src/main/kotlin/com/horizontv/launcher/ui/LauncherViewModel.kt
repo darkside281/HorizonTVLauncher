@@ -1247,7 +1247,10 @@ class LauncherViewModel(
         jellyfinSearchResults = if (nextVisible) it.jellyfinSearchResults else emptyList(),
         jellyfinSearchError = if (nextVisible) it.jellyfinSearchError else null,
         isSearchingStreaming = if (nextVisible) it.isSearchingStreaming else false,
+        isLoadingMoreStreaming = if (nextVisible) it.isLoadingMoreStreaming else false,
         streamingSearchResults = if (nextVisible) it.streamingSearchResults else emptyList(),
+        streamingHasMore = if (nextVisible) it.streamingHasMore else false,
+        streamingNextCursor = if (nextVisible) it.streamingNextCursor else null,
         streamingSearchError = if (nextVisible) it.streamingSearchError else null,
       )
     }
@@ -1326,29 +1329,44 @@ class LauncherViewModel(
       _uiState.update {
         it.copy(
           isSearchingStreaming = false,
+          isLoadingMoreStreaming = false,
           streamingSearchResults = emptyList(),
+          streamingHasMore = false,
+          streamingNextCursor = null,
           streamingSearchError = null,
         )
       }
     } else {
       streamingSearchJob = viewModelScope.launch {
-        _uiState.update { it.copy(isSearchingStreaming = true, streamingSearchError = null) }
+        _uiState.update {
+          it.copy(
+            isSearchingStreaming = true,
+            isLoadingMoreStreaming = false,
+            streamingHasMore = false,
+            streamingNextCursor = null,
+            streamingSearchError = null,
+          )
+        }
         delay(350L)
-        val res = streamingSearchDataSource.searchTitles(
+        val res = streamingSearchDataSource.searchTitlesPage(
           query = trimmed,
           countryCode = "GB",
           limit = 8,
+          afterCursor = null,
         )
         res.fold(
-          onSuccess = { items ->
+          onSuccess = { page ->
+            val items = page.items
             _uiState.update {
               it.copy(
                 isSearchingStreaming = false,
                 streamingSearchResults = items,
+                streamingHasMore = page.hasNextPage,
+                streamingNextCursor = page.endCursor,
                 streamingSearchError = null,
               )
             }
-            val hydrated = items.map { item ->
+            val hydratedById = items.map { item ->
               async {
                 val url = item.posterUrl
                 val poster = if (url != null) {
@@ -1356,11 +1374,18 @@ class LauncherViewModel(
                 } else {
                   null
                 }
-                item.copy(poster = poster)
+                item.id to poster
               }
-            }.map { it.await() }
+            }.map { it.await() }.toMap()
             if (_uiState.value.searchQuery.trim() == trimmed) {
-              _uiState.update { it.copy(streamingSearchResults = hydrated) }
+              _uiState.update { state ->
+                state.copy(
+                  streamingSearchResults = state.streamingSearchResults.map { existing ->
+                    val poster = hydratedById[existing.id]
+                    if (poster != null && existing.poster == null) existing.copy(poster = poster) else existing
+                  },
+                )
+              }
             }
           },
           onFailure = { err ->
@@ -1368,12 +1393,74 @@ class LauncherViewModel(
               it.copy(
                 isSearchingStreaming = false,
                 streamingSearchResults = emptyList(),
+                streamingHasMore = false,
+                streamingNextCursor = null,
                 streamingSearchError = err.message ?: "Could not search JustWatch right now",
               )
             }
           },
         )
       }
+    }
+  }
+
+  fun loadMoreStreamingResults() {
+    val current = _uiState.value
+    val trimmed = current.searchQuery.trim()
+    val cursor = current.streamingNextCursor
+    if (trimmed.length < 2 || cursor.isNullOrBlank() || current.isSearchingStreaming || current.isLoadingMoreStreaming) {
+      return
+    }
+    viewModelScope.launch {
+      _uiState.update { it.copy(isLoadingMoreStreaming = true) }
+      val res = streamingSearchDataSource.searchTitlesPage(
+        query = trimmed,
+        countryCode = "GB",
+        limit = 8,
+        afterCursor = cursor,
+      )
+      res.fold(
+        onSuccess = { page ->
+          if (_uiState.value.searchQuery.trim() != trimmed) return@fold
+          val existingIds = _uiState.value.streamingSearchResults.map { it.id }.toSet()
+          val newItems = page.items.filterNot { it.id in existingIds }
+          _uiState.update { state ->
+            state.copy(
+              isLoadingMoreStreaming = false,
+              streamingSearchResults = state.streamingSearchResults + newItems,
+              streamingHasMore = page.hasNextPage && page.endCursor != cursor,
+              streamingNextCursor = page.endCursor,
+            )
+          }
+          if (newItems.isNotEmpty()) {
+            val hydratedById = newItems.map { item ->
+              async {
+                val url = item.posterUrl
+                val poster = if (url != null) {
+                  streamingSearchDataSource.downloadPoster(url)
+                } else {
+                  null
+                }
+                item.id to poster
+              }
+            }.map { it.await() }.toMap()
+            if (_uiState.value.searchQuery.trim() == trimmed) {
+              _uiState.update { state ->
+                state.copy(
+                  streamingSearchResults = state.streamingSearchResults.map { existing ->
+                    val poster = hydratedById[existing.id]
+                    if (poster != null && existing.poster == null) existing.copy(poster = poster) else existing
+                  },
+                )
+              }
+            }
+          }
+        },
+        onFailure = { err ->
+          _uiState.update { it.copy(isLoadingMoreStreaming = false) }
+          showStatus(err.message ?: "Could not load more JustWatch results")
+        },
+      )
     }
   }
 

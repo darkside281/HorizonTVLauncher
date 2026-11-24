@@ -292,6 +292,7 @@ class MainActivity : ComponentActivity() {
           onSelectSearchProvider = viewModel::setSearchProvider,
           onOpenJellyfinSearchItem = viewModel::openJellyfinSearchItem,
           onOpenStreamingOffer = viewModel::openStreamingOffer,
+          onLoadMoreStreaming = viewModel::loadMoreStreamingResults,
           onSearchExternalProvider = viewModel::openExternalProviderSearch,
           onSearchYouTube = viewModel::openYouTubeSearch,
           onSearchWeb = viewModel::openWebSearch,

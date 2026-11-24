@@ -99,7 +99,9 @@ fun UniversalSearchDialog(
   jellyfinResults: List<JellyfinSearchItem>,
   jellyfinError: String?,
   isSearchingStreaming: Boolean,
+  isLoadingMoreStreaming: Boolean = false,
   streamingResults: List<StreamingSearchItem>,
+  streamingHasMore: Boolean = false,
   streamingError: String?,
   isServiceFilterActive: Boolean = false,
   externalSearchProviders: List<ExternalSearchProvider>,
@@ -114,6 +116,7 @@ fun UniversalSearchDialog(
   onLaunchApp: (AppInfo) -> Unit,
   onOpenJellyfinItem: (JellyfinSearchItem) -> Unit,
   onOpenStreamingOffer: (StreamingOffer) -> Unit,
+  onLoadMoreStreaming: () -> Unit = {},
   onSearchExternalProvider: (ExternalSearchProvider, String) -> Unit,
   onSearchYouTube: (String) -> Unit,
   onSearchWeb: (String) -> Unit,
@@ -483,15 +486,25 @@ fun UniversalSearchDialog(
                     )
                   }
                   streamingResults.isEmpty() -> {
-                    Text(
-                      text = if (isServiceFilterActive) {
-                        "No streaming matches found on your selected services for \"${query.trim()}\"."
-                      } else {
-                        "No streaming matches found on JustWatch for \"${query.trim()}\"."
-                      },
-                      style = MaterialTheme.typography.bodyMedium,
-                      color = Color.White.copy(alpha = 0.60f),
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                      Text(
+                        text = if (isServiceFilterActive) {
+                          "No streaming matches found on your selected services for \"${query.trim()}\"."
+                        } else {
+                          "No streaming matches found on JustWatch for \"${query.trim()}\"."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.60f),
+                      )
+                      if (streamingHasMore || isLoadingMoreStreaming) {
+                        ShowMoreStreamingButton(
+                          isLoading = isLoadingMoreStreaming,
+                          accent = accent,
+                          onClick = onLoadMoreStreaming,
+                          modifier = Modifier.topResultUpModifier(true),
+                        )
+                      }
+                    }
                   }
                   else -> {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -506,6 +519,13 @@ fun UniversalSearchDialog(
                             onNavigateUp = if (idx == 0) ({ moveFocusUpToFilters() }) else null,
                           )
                         }
+                      }
+                      if (streamingHasMore || isLoadingMoreStreaming) {
+                        ShowMoreStreamingButton(
+                          isLoading = isLoadingMoreStreaming,
+                          accent = accent,
+                          onClick = onLoadMoreStreaming,
+                        )
                       }
                     }
                   }
@@ -1226,6 +1246,66 @@ private fun StreamingOfferPill(
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
+    }
+  }
+}
+
+@Composable
+private fun ShowMoreStreamingButton(
+  isLoading: Boolean,
+  accent: AccentPreset,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  var isFocused by remember { mutableStateOf(false) }
+  val bg by animateColorAsState(
+    targetValue = when {
+      isFocused -> accent.primary
+      else -> accent.primary.copy(alpha = 0.16f)
+    },
+    label = "showMoreStreamingBg",
+  )
+  val fg = if (isFocused) accent.onPrimary else Color.White
+
+  Surface(
+    modifier = modifier
+      .fillMaxWidth()
+      .onFocusChanged { isFocused = it.isFocused }
+      .clickable(enabled = !isLoading, onClick = onClick),
+    shape = RoundedCornerShape(14.dp),
+    color = bg,
+    border = if (isFocused) {
+      BorderStroke(2.dp, Color.White)
+    } else {
+      BorderStroke(1.dp, accent.primary.copy(alpha = 0.45f))
+    },
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.Center,
+    ) {
+      if (isLoading) {
+        CircularProgressIndicator(
+          color = fg,
+          strokeWidth = 2.dp,
+          modifier = Modifier.size(16.dp),
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+          text = "Loading more results…",
+          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+          color = fg,
+        )
+      } else {
+        Text(
+          text = "Show More Results",
+          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+          color = fg,
+        )
+      }
     }
   }
 }
