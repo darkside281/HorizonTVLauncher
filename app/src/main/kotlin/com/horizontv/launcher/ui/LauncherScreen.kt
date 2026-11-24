@@ -74,6 +74,7 @@ import com.horizontv.launcher.model.AppFilter
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
+import com.horizontv.launcher.model.HomeTileSpacing
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinSearchItem
 import com.horizontv.launcher.model.JustWatchRegion
@@ -205,6 +206,7 @@ fun LauncherScreen(
   onSetGridColumns: (Int) -> Unit,
   onToggleShowNonLeanback: () -> Unit,
   onToggleShowSearchBar: () -> Unit,
+  onToggleSearchOpenDetailsPopup: () -> Unit = {},
   onToggleSearchProvider: (String) -> Unit,
   onToggleJustWatchFilterServices: () -> Unit = {},
   onToggleJustWatchService: (String) -> Unit = {},
@@ -224,6 +226,9 @@ fun LauncherScreen(
   onSelectTvInput: (TvInputSource) -> Unit = {},
   onToggleLockHomeLayout: () -> Unit,
   onSetHomeTileSize: (String) -> Unit,
+  onToggleMinimalistDockMode: () -> Unit = {},
+  onSetTileOpacity: (Float) -> Unit = {},
+  onSetTileSpacing: (String) -> Unit = {},
   onToggleShowClock: () -> Unit,
   onToggleShowDate: () -> Unit,
   onOpenAppInfo: (String) -> Unit,
@@ -504,7 +509,14 @@ fun LauncherScreen(
         }
       }
     } else {
-      val singleRowDockHeight = (tileSize.heightDp + if (state.settings.showTileTitles) 108 else 82).dp
+      val minimalistMode = state.settings.minimalistDockMode
+      val tileOpacity = state.settings.tileOpacity
+      val tileSpacingDp = HomeTileSpacing.fromId(state.settings.tileSpacing).spacingDp.dp
+      val singleRowDockHeight = (
+        tileSize.heightDp +
+          (if (state.settings.showTileTitles) 108 else 82) -
+          (if (minimalistMode) 36 else 0)
+        ).dp
       var allAppsGridY by remember { mutableIntStateOf(0) }
 
       Column(
@@ -512,8 +524,8 @@ fun LauncherScreen(
           .fillMaxSize()
           .navigationBarsPadding()
           .padding(
-            top = 30.dp,
-            bottom = 10.dp,
+            top = if (minimalistMode) 24.dp else 30.dp,
+            bottom = if (minimalistMode) 4.dp else 10.dp,
           ),
       ) {
         // Fixed Top Hero: Clock, Date, Weather, Controls, Reorder Hint, and Locked ClearLogo
@@ -725,6 +737,10 @@ fun LauncherScreen(
                     onFinishReorder = onStopReordering,
                     showTileTitles = state.settings.showTileTitles,
                     isAppPinLocked = { pkg -> state.settings.isAppPinLocked(pkg) },
+                    showHeader = !minimalistMode,
+                    compactVerticalPadding = minimalistMode,
+                    tileOpacity = tileOpacity,
+                    tileSpacingDp = tileSpacingDp,
                     showAddTile = state.settings.showAddAppTile && !state.settings.lockHomeLayout,
                     onAddApps = { onOpenAddAppsToRow(heroRow.id) },
                   )
@@ -774,6 +790,10 @@ fun LauncherScreen(
                       onFinishReorder = onStopReordering,
                       showTileTitles = state.settings.showTileTitles,
                       isAppPinLocked = { pkg -> state.settings.isAppPinLocked(pkg) },
+                      showHeader = true,
+                      compactVerticalPadding = minimalistMode,
+                      tileOpacity = tileOpacity,
+                      tileSpacingDp = tileSpacingDp,
                       showAddTile = state.settings.showAddAppTile && !state.settings.lockHomeLayout,
                       onAddApps = { onOpenAddAppsToRow(extraRow.id) },
                     )
@@ -892,6 +912,7 @@ fun LauncherScreen(
                               cardSurface = theme.cardSurface,
                               isFavorite = app.packageName in pinnedSet,
                               isPinLocked = state.settings.isAppPinLocked(app.packageName),
+                              tileOpacity = tileOpacity,
                               onFocused = {
                                 onAppFocused(app)
                                 val targetY = if (rowIndex == 0) {
@@ -1123,6 +1144,7 @@ fun LauncherScreen(
         justWatchRegionCode = state.settings.activeJustWatchRegion.code,
         showRottenTomatoes = state.settings.justWatchShowRottenTomatoes,
         showAgeRating = state.settings.justWatchShowAgeRating,
+        openDetailsPopup = state.settings.searchOpenDetailsPopup,
         externalSearchProviders = enabledExternalProviders,
         appsProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_APPS),
         jellyfinProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JELLYFIN),
@@ -1193,6 +1215,7 @@ fun LauncherScreen(
         onRefreshWeather = onRefreshWeather,
         onOpenSelfAppInfo = { onOpenAppInfo("com.horizontv.launcher") },
         onToggleShowSearchBar = onToggleShowSearchBar,
+        onToggleSearchOpenDetailsPopup = onToggleSearchOpenDetailsPopup,
         onToggleSearchProvider = onToggleSearchProvider,
         onToggleJustWatchFilterServices = onToggleJustWatchFilterServices,
         onToggleJustWatchService = onToggleJustWatchService,
@@ -1210,6 +1233,9 @@ fun LauncherScreen(
         tvInputsCount = state.tvInputs.size,
         onToggleLockHomeLayout = onToggleLockHomeLayout,
         onSetHomeTileSize = onSetHomeTileSize,
+        onToggleMinimalistDockMode = onToggleMinimalistDockMode,
+        onSetTileOpacity = onSetTileOpacity,
+        onSetTileSpacing = onSetTileSpacing,
         onToggleShowClock = onToggleShowClock,
         onToggleShowDate = onToggleShowDate,
         onToggle24HourClock = onToggle24HourClock,
@@ -1332,34 +1358,41 @@ private fun CustomAppRowSection(
   onFinishReorder: () -> Unit,
   showTileTitles: Boolean,
   isAppPinLocked: (String) -> Boolean = { false },
+  showHeader: Boolean = true,
+  compactVerticalPadding: Boolean = false,
+  tileOpacity: Float = 1.0f,
+  tileSpacingDp: androidx.compose.ui.unit.Dp = 20.dp,
   showAddTile: Boolean,
   onAddApps: () -> Unit,
 ) {
   Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(start = 36.dp),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      Text(
-        text = row.title,
-        style = MaterialTheme.typography.titleLarge,
-        color = Color.White,
-      )
-      Text(
-        text = "(${row.apps.size})",
-        style = MaterialTheme.typography.bodyMedium,
-        color = Color.White.copy(alpha = 0.58f),
-      )
+    if (showHeader) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(start = 36.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+          text = row.title,
+          style = MaterialTheme.typography.titleLarge,
+          color = Color.White,
+        )
+        Text(
+          text = "(${row.apps.size})",
+          style = MaterialTheme.typography.bodyMedium,
+          color = Color.White.copy(alpha = 0.58f),
+        )
+      }
     }
 
     val hasAddTile = showAddTile || row.apps.isEmpty()
+    val verticalPad = if (compactVerticalPadding) 14.dp else 22.dp
     LazyRow(
       state = listState,
-      horizontalArrangement = Arrangement.spacedBy(20.dp),
-      contentPadding = PaddingValues(top = 22.dp, bottom = 22.dp, start = 36.dp, end = 36.dp),
+      horizontalArrangement = Arrangement.spacedBy(tileSpacingDp),
+      contentPadding = PaddingValues(top = verticalPad, bottom = verticalPad, start = 36.dp, end = 36.dp),
     ) {
       itemsIndexed(
         items = row.apps,
@@ -1381,6 +1414,7 @@ private fun CustomAppRowSection(
           tileSize = tileSize,
           showTitle = showTileTitles,
           isPinLocked = isAppPinLocked(app.packageName),
+          tileOpacity = tileOpacity,
           blockLeft = index == 0,
           blockRight = index == row.apps.lastIndex && !hasAddTile,
           cardFocusRequester = focusRequesterFor(app.packageName),
@@ -1397,6 +1431,7 @@ private fun CustomAppRowSection(
             onClick = onAddApps,
             tileSize = tileSize,
             showTitle = showTileTitles,
+            tileOpacity = tileOpacity,
             blockLeft = row.apps.isEmpty(),
             blockRight = true,
             cardFocusRequester = addTileFocusRequester,

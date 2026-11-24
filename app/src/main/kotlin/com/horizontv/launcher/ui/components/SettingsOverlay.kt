@@ -88,6 +88,7 @@ import com.horizontv.launcher.model.AppUpdateInfo
 import com.horizontv.launcher.model.AppRow
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
+import com.horizontv.launcher.model.HomeTileSpacing
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JustWatchRegion
@@ -168,6 +169,7 @@ fun SettingsOverlay(
   onRefreshWeather: () -> Unit,
   onOpenSelfAppInfo: () -> Unit,
   onToggleShowSearchBar: () -> Unit,
+  onToggleSearchOpenDetailsPopup: () -> Unit = {},
   onToggleSearchProvider: (String) -> Unit,
   onToggleJustWatchFilterServices: () -> Unit,
   onToggleJustWatchService: (String) -> Unit,
@@ -185,6 +187,9 @@ fun SettingsOverlay(
   tvInputsCount: Int = 0,
   onToggleLockHomeLayout: () -> Unit,
   onSetHomeTileSize: (String) -> Unit,
+  onToggleMinimalistDockMode: () -> Unit = {},
+  onSetTileOpacity: (Float) -> Unit = {},
+  onSetTileSpacing: (String) -> Unit = {},
   onToggleShowClock: () -> Unit,
   onToggleShowDate: () -> Unit,
   onToggle24HourClock: () -> Unit,
@@ -567,6 +572,65 @@ fun SettingsOverlay(
                       }
 
                       SettingsToggleRow(
+                        title = "Minimalist Bottom-Dock Mode",
+                        subtitle = if (settings.minimalistDockMode) {
+                          "Enabled — pushes dock lower & hides primary row title for full-bleed artwork"
+                        } else {
+                          "Off — standard dock position with row header"
+                        },
+                        checked = settings.minimalistDockMode,
+                        accent = accent,
+                        onClick = onToggleMinimalistDockMode,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      SettingsFieldLabel("Tile Opacity (Unfocused)")
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        listOf(
+                          1.0f to "100%",
+                          0.85f to "85%",
+                          0.70f to "70%",
+                          0.55f to "55%",
+                          0.40f to "40%",
+                        ).forEachIndexed { idx, (alpha, label) ->
+                          SelectablePill(
+                            label = label,
+                            selected = kotlin.math.abs(settings.tileOpacity - alpha) < 0.04f,
+                            accent = accent,
+                            onClick = { onSetTileOpacity(alpha) },
+                            modifier = Modifier
+                              .weight(1f)
+                              .then(
+                                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                              ),
+                          )
+                        }
+                      }
+
+                      SettingsFieldLabel("Tile Spacing")
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        HomeTileSpacing.entries.forEachIndexed { idx, spacing ->
+                          SelectablePill(
+                            label = spacing.label,
+                            selected = HomeTileSpacing.fromId(settings.tileSpacing) == spacing,
+                            accent = accent,
+                            onClick = { onSetTileSpacing(spacing.id) },
+                            modifier = Modifier
+                              .weight(1f)
+                              .then(
+                                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
+                              ),
+                          )
+                        }
+                      }
+
+                      SettingsToggleRow(
                         title = "Show App Titles Under Tiles",
                         subtitle = if (settings.showTileTitles) {
                           "Shown — display app names underneath each tile"
@@ -722,6 +786,19 @@ fun SettingsOverlay(
                         checked = settings.showSearchBar,
                         accent = accent,
                         onClick = onToggleShowSearchBar,
+                        modifier = Modifier.focusProperties { left = activeTabRequester },
+                      )
+
+                      SettingsToggleRow(
+                        title = "Open Full Details on Click",
+                        subtitle = if (settings.searchOpenDetailsPopup) {
+                          "Enabled — clicking a JustWatch result opens full synopsis, runtime, genres, cast & all watch options"
+                        } else {
+                          "Off — clicking a streaming button launches straight into the app"
+                        },
+                        checked = settings.searchOpenDetailsPopup,
+                        accent = accent,
+                        onClick = onToggleSearchOpenDetailsPopup,
                         modifier = Modifier.focusProperties { left = activeTabRequester },
                       )
 

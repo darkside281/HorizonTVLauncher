@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -108,6 +109,7 @@ fun UniversalSearchDialog(
   justWatchRegionCode: String = "GB",
   showRottenTomatoes: Boolean = true,
   showAgeRating: Boolean = true,
+  openDetailsPopup: Boolean = true,
   externalSearchProviders: List<ExternalSearchProvider>,
   appsProviderEnabled: Boolean,
   jellyfinProviderEnabled: Boolean,
@@ -133,6 +135,10 @@ fun UniversalSearchDialog(
   val firstFilterRequester = remember { FocusRequester() }
   val scrollState = rememberScrollState()
   val coroutineScope = rememberCoroutineScope()
+  var detailsItemId by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(query) {
+    detailsItemId = null
+  }
   val hostView = LocalView.current
   val keyboardController = LocalSoftwareKeyboardController.current
   val focusManager = LocalFocusManager.current
@@ -540,6 +546,11 @@ fun UniversalSearchDialog(
                             isServiceFilterActive = isServiceFilterActive,
                             showRottenTomatoes = showRottenTomatoes,
                             showAgeRating = showAgeRating,
+                            openDetailsPopup = openDetailsPopup,
+                            onOpenDetails = {
+                              hideDialogKeyboard()
+                              detailsItemId = item.id
+                            },
                             onOpenOffer = onOpenStreamingOffer,
                             upTarget = if (idx == 0) firstFilterRequester else null,
                             onNavigateUp = if (idx == 0) ({ moveFocusUpToFilters() }) else null,
@@ -760,6 +771,22 @@ fun UniversalSearchDialog(
           }
         }
       }
+    }
+
+    val detailsItem = detailsItemId?.let { id -> streamingResults.firstOrNull { it.id == id } }
+    if (detailsItem != null) {
+      StreamingTitleDetailsDialog(
+        item = detailsItem,
+        accent = accent,
+        isServiceFilterActive = isServiceFilterActive,
+        showRottenTomatoes = showRottenTomatoes,
+        showAgeRating = showAgeRating,
+        onOpenOffer = { offer ->
+          detailsItemId = null
+          onOpenStreamingOffer(offer)
+        },
+        onDismiss = { detailsItemId = null },
+      )
     }
   }
 
@@ -1063,6 +1090,8 @@ private fun StreamingSearchResultCard(
   isServiceFilterActive: Boolean = false,
   showRottenTomatoes: Boolean = true,
   showAgeRating: Boolean = true,
+  openDetailsPopup: Boolean = false,
+  onOpenDetails: () -> Unit = {},
   onOpenOffer: (StreamingOffer) -> Unit,
   upTarget: FocusRequester? = null,
   onNavigateUp: (() -> Unit)? = null,
@@ -1083,11 +1112,36 @@ private fun StreamingSearchResultCard(
   } else {
     Modifier
   }
+
+  var isCardFocused by remember { mutableStateOf(false) }
+  val cardBg by animateColorAsState(
+    targetValue = if (openDetailsPopup && isCardFocused) {
+      accent.primary.copy(alpha = 0.22f)
+    } else {
+      Color.White.copy(alpha = 0.06f)
+    },
+    label = "jwCardBg",
+  )
+
   Surface(
-    modifier = Modifier.fillMaxWidth(),
+    modifier = Modifier
+      .fillMaxWidth()
+      .then(
+        if (openDetailsPopup) {
+          pillUpModifier
+            .onFocusChanged { isCardFocused = it.isFocused }
+            .clickable(onClick = onOpenDetails)
+        } else {
+          Modifier
+        },
+      ),
     shape = RoundedCornerShape(16.dp),
-    color = Color.White.copy(alpha = 0.06f),
-    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    color = cardBg,
+    border = if (openDetailsPopup && isCardFocused) {
+      BorderStroke(2.dp, Color.White)
+    } else {
+      BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+    },
   ) {
     Row(
       modifier = Modifier
@@ -1160,6 +1214,13 @@ private fun StreamingSearchResultCard(
               color = Color.White.copy(alpha = 0.65f),
             )
           }
+          if (item.formattedRuntime != null) {
+            Text(
+              text = item.formattedRuntime!!,
+              style = MaterialTheme.typography.labelSmall,
+              color = Color.White.copy(alpha = 0.60f),
+            )
+          }
           if (showAgeRating && !item.ageCertification.isNullOrBlank()) {
             Surface(
               shape = RoundedCornerShape(5.dp),
@@ -1223,7 +1284,66 @@ private fun StreamingSearchResultCard(
           )
         }
 
-        if (item.offers.isEmpty()) {
+        if (openDetailsPopup) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+          ) {
+            Row(
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.weight(1f),
+            ) {
+              if (item.offers.isEmpty()) {
+                Text(
+                  text = if (isServiceFilterActive) {
+                    "Not on your selected services"
+                  } else {
+                    "No streaming offers listed"
+                  },
+                  style = MaterialTheme.typography.labelSmall,
+                  color = Color.White.copy(alpha = 0.50f),
+                )
+              } else {
+                item.offers.take(4).forEach { offer ->
+                  Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (offer.isIncluded) accent.primary.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.08f),
+                    border = BorderStroke(
+                      1.dp,
+                      if (offer.isIncluded) accent.primary.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.14f),
+                    ),
+                  ) {
+                    Text(
+                      text = offer.badgeLabel,
+                      style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                      color = Color.White.copy(alpha = 0.90f),
+                      maxLines = 1,
+                      overflow = TextOverflow.Ellipsis,
+                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                  }
+                }
+                if (item.offers.size > 4) {
+                  Text(
+                    text = "+${item.offers.size - 4} more",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.55f),
+                  )
+                }
+              }
+            }
+            if (isCardFocused) {
+              Text(
+                text = "OK for details ›",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = accent.primary,
+                modifier = Modifier.padding(start = 8.dp),
+              )
+            }
+          }
+        } else if (item.offers.isEmpty()) {
           var isEmptyPillFocused by remember { mutableStateOf(false) }
           Surface(
             modifier = pillUpModifier
@@ -1261,6 +1381,300 @@ private fun StreamingSearchResultCard(
                 onClick = { onOpenOffer(offer) },
                 modifier = pillUpModifier,
               )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun StreamingTitleDetailsDialog(
+  item: StreamingSearchItem,
+  accent: AccentPreset,
+  isServiceFilterActive: Boolean,
+  showRottenTomatoes: Boolean,
+  showAgeRating: Boolean,
+  onOpenOffer: (StreamingOffer) -> Unit,
+  onDismiss: () -> Unit,
+) {
+  val firstActionRequester = remember { FocusRequester() }
+  val scrollState = rememberScrollState()
+
+  Dialog(
+    onDismissRequest = onDismiss,
+    properties = DialogProperties(
+      usePlatformDefaultWidth = false,
+      dismissOnBackPress = true,
+      dismissOnClickOutside = true,
+    ),
+  ) {
+    LaunchedEffect(item.id) {
+      runCatching { firstActionRequester.requestFocus() }
+    }
+
+    Box(
+      modifier = Modifier
+        .fillMaxSize()
+        .background(Color.Black.copy(alpha = 0.80f))
+        .pointerInput(Unit) { detectTapGestures { onDismiss() } }
+        .padding(horizontal = 36.dp, vertical = 24.dp),
+      contentAlignment = Alignment.Center,
+    ) {
+      Surface(
+        modifier = Modifier
+          .width(980.dp)
+          .heightIn(min = 460.dp, max = 568.dp)
+          .pointerInput(Unit) { detectTapGestures { /* consume */ } },
+        shape = RoundedCornerShape(28.dp),
+        color = Color(0xF60E1525),
+        border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.20f)),
+        shadowElevation = 28.dp,
+      ) {
+        Column(
+          modifier = Modifier
+            .padding(30.dp)
+            .verticalScroll(scrollState),
+          verticalArrangement = Arrangement.spacedBy(22.dp),
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(26.dp),
+            verticalAlignment = Alignment.Top,
+          ) {
+            // Large Poster
+            Box(
+              modifier = Modifier
+                .width(196.dp)
+                .height(292.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                  Brush.linearGradient(
+                    listOf(accent.primary.copy(alpha = 0.30f), Color(0xFF1E293B)),
+                  ),
+                ),
+              contentAlignment = Alignment.Center,
+            ) {
+              if (item.poster != null) {
+                Image(
+                  bitmap = item.poster,
+                  contentDescription = item.title,
+                  contentScale = ContentScale.Crop,
+                  modifier = Modifier.fillMaxSize(),
+                )
+              } else {
+                Icon(
+                  imageVector = if (item.typeLabel == "TV Show") Icons.Rounded.Tv else Icons.Rounded.Movie,
+                  contentDescription = null,
+                  tint = Color.White.copy(alpha = 0.70f),
+                  modifier = Modifier.size(48.dp),
+                )
+              }
+            }
+
+            // Metadata & Synopsis
+            Column(
+              modifier = Modifier.weight(1f),
+              verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+              ) {
+                Text(
+                  text = item.title,
+                  style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                  color = Color.White,
+                  maxLines = 2,
+                  overflow = TextOverflow.Ellipsis,
+                  modifier = Modifier.weight(1f),
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                QuickActionIcon(
+                  icon = Icons.Rounded.Close,
+                  contentDescription = "Close Details",
+                  accent = accent,
+                  onClick = onDismiss,
+                  modifier = if (item.offers.isEmpty()) Modifier.focusRequester(firstActionRequester) else Modifier,
+                )
+              }
+
+              // Badges row: Type • Year • Runtime • Age • IMDb • RT
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                Surface(
+                  shape = RoundedCornerShape(6.dp),
+                  color = accent.primary.copy(alpha = 0.24f),
+                ) {
+                  Text(
+                    text = item.typeLabel,
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = accent.primary,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                  )
+                }
+                if (item.year != null) {
+                  Text(
+                    text = item.year.toString(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.80f),
+                  )
+                }
+                if (item.formattedRuntime != null) {
+                  Text(
+                    text = "• ${item.formattedRuntime}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.76f),
+                  )
+                }
+                if (showAgeRating && !item.ageCertification.isNullOrBlank()) {
+                  Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color.White.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f)),
+                  ) {
+                    Text(
+                      text = item.ageCertification,
+                      style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                      color = Color.White.copy(alpha = 0.92f),
+                      modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                    )
+                  }
+                }
+                if (item.imdbScore != null) {
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                  ) {
+                    Icon(
+                      imageVector = Icons.Rounded.Star,
+                      contentDescription = null,
+                      tint = Color(0xFFFBBF24),
+                      modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                      text = String.format(Locale.US, "%.1f", item.imdbScore),
+                      style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                      color = Color.White.copy(alpha = 0.90f),
+                    )
+                  }
+                }
+                if (showRottenTomatoes && item.tomatoMeter != null) {
+                  val isFresh = item.tomatoMeter >= 60
+                  Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (isFresh) Color(0xFFDC2626).copy(alpha = 0.24f) else Color(0xFF65A30D).copy(alpha = 0.22f),
+                    border = if (item.certifiedFresh) {
+                      BorderStroke(1.dp, Color(0xFFFBBF24).copy(alpha = 0.70f))
+                    } else {
+                      null
+                    },
+                  ) {
+                    Text(
+                      text = "🍅 ${item.tomatoMeter}%",
+                      style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                      color = if (isFresh) Color(0xFFFCA5A5) else Color(0xFFBEF264),
+                      modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                  }
+                }
+              }
+
+              // Genres
+              if (item.genres.isNotEmpty()) {
+                Row(
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                ) {
+                  item.genres.forEach { genre ->
+                    Surface(
+                      shape = RoundedCornerShape(50),
+                      color = Color.White.copy(alpha = 0.09f),
+                    ) {
+                      Text(
+                        text = genre,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.84f),
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 4.dp),
+                      )
+                    }
+                  }
+                }
+              }
+
+              // Full Synopsis
+              if (!item.shortDescription.isNullOrBlank()) {
+                Text(
+                  text = item.shortDescription,
+                  style = MaterialTheme.typography.bodyLarge,
+                  color = Color.White.copy(alpha = 0.90f),
+                )
+              }
+
+              // Directors & Cast
+              if (item.directors.isNotEmpty()) {
+                Text(
+                  text = "Director: ${item.directors.joinToString(", ")}",
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = Color.White.copy(alpha = 0.72f),
+                )
+              }
+              if (item.cast.isNotEmpty()) {
+                Text(
+                  text = "Cast: ${item.cast.joinToString(", ")}",
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = Color.White.copy(alpha = 0.72f),
+                )
+              }
+            }
+          }
+
+          // Where to Watch — all streaming options
+          Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SearchSectionHeader(
+              icon = Icons.Rounded.Tv,
+              title = "Where to Watch",
+              trailing = "${item.offers.size} option${if (item.offers.size == 1) "" else "s"}",
+              accent = accent,
+            )
+
+            if (item.offers.isEmpty()) {
+              Text(
+                text = if (isServiceFilterActive) {
+                  "Not currently available on your selected streaming services."
+                } else {
+                  "No streaming offers currently listed."
+                },
+                style = MaterialTheme.typography.bodyLarge,
+                color = Color.White.copy(alpha = 0.65f),
+              )
+            } else {
+              Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item.offers.chunked(4).forEachIndexed { rowIdx, rowOffers ->
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                    rowOffers.forEachIndexed { colIdx, offer ->
+                      StreamingOfferPill(
+                        offer = offer,
+                        accent = accent,
+                        onClick = { onOpenOffer(offer) },
+                        modifier = if (rowIdx == 0 && colIdx == 0) {
+                          Modifier.focusRequester(firstActionRequester)
+                        } else {
+                          Modifier
+                        },
+                      )
+                    }
+                  }
+                }
+              }
             }
           }
         }

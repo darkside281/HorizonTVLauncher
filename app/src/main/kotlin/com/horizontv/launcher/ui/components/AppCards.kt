@@ -45,6 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
@@ -92,6 +93,7 @@ fun FavoriteBannerCard(
   tileSize: HomeTileSize = HomeTileSize.MEDIUM,
   showTitle: Boolean = true,
   isPinLocked: Boolean = false,
+  tileOpacity: Float = 1.0f,
   blockLeft: Boolean = false,
   blockRight: Boolean = false,
   cardFocusRequester: FocusRequester = remember { FocusRequester() },
@@ -138,11 +140,16 @@ fun FavoriteBannerCard(
     },
     label = "favBorderColor",
   )
+  val cardAlpha by animateFloatAsState(
+    targetValue = if (isFocused || isReordering) 1f else tileOpacity.coerceIn(0.35f, 1f),
+    label = "favAlpha",
+  )
 
   Column(
     modifier = modifier
       .width(tileSize.widthDp.dp)
       .offset(y = liftOffset)
+      .alpha(cardAlpha)
       .zIndex(if (isFocused || isReordering) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -362,6 +369,7 @@ fun AppGridTile(
   cardSurface: Color,
   isFavorite: Boolean,
   isPinLocked: Boolean = false,
+  tileOpacity: Float = 1.0f,
   onFocused: () -> Unit,
   onLaunch: () -> Unit,
   onOpenMenu: () -> Unit,
@@ -397,10 +405,15 @@ fun AppGridTile(
     targetValue = if (isFocused) Color.White else Color.White.copy(alpha = 0.14f),
     label = "tileBorderColor",
   )
+  val cardAlpha by animateFloatAsState(
+    targetValue = if (isFocused) 1f else tileOpacity.coerceIn(0.35f, 1f),
+    label = "tileAlpha",
+  )
 
   Column(
     modifier = modifier
       .offset(y = liftOffset)
+      .alpha(cardAlpha)
       .zIndex(if (isFocused) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -539,6 +552,7 @@ fun AddFavoriteTile(
   tileSize: HomeTileSize = HomeTileSize.MEDIUM,
   showTitle: Boolean = true,
   isPinLocked: Boolean = false,
+  tileOpacity: Float = 1.0f,
   blockLeft: Boolean = false,
   blockRight: Boolean = false,
   cardFocusRequester: FocusRequester = remember { FocusRequester() },
@@ -561,11 +575,16 @@ fun AddFavoriteTile(
     targetValue = if (isFocused) Color.White else Color.White.copy(alpha = 0.22f),
     label = "addTileBorder",
   )
+  val cardAlpha by animateFloatAsState(
+    targetValue = if (isFocused) 1f else tileOpacity.coerceIn(0.35f, 1f),
+    label = "addTileAlpha",
+  )
 
   Column(
     modifier = modifier
       .width(tileSize.addTileWidthDp.dp)
       .offset(y = liftOffset)
+      .alpha(cardAlpha)
       .zIndex(if (isFocused) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {

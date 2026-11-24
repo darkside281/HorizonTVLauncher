@@ -44,6 +44,17 @@ enum class AppFilter(val label: String) {
   OTHER_APPS("Other Apps"),
 }
 
+enum class HomeTileSpacing(val id: String, val label: String, val spacingDp: Int) {
+  COMPACT("compact", "Compact", 12),
+  NORMAL("normal", "Normal", 20),
+  WIDE("wide", "Wide", 30);
+
+  companion object {
+    fun fromId(id: String?): HomeTileSpacing =
+      entries.firstOrNull { it.id == id } ?: NORMAL
+  }
+}
+
 enum class SearchProviderFilter(val label: String) {
   ALL("All"),
   APPS("Apps"),
@@ -75,7 +86,11 @@ data class StreamingSearchItem(
   val title: String,
   val objectType: String,
   val year: Int?,
+  val runtimeMinutes: Int? = null,
   val shortDescription: String? = null,
+  val genres: List<String> = emptyList(),
+  val cast: List<String> = emptyList(),
+  val directors: List<String> = emptyList(),
   val ageCertification: String? = null,
   val imdbScore: Float? = null,
   val tomatoMeter: Int? = null,
@@ -86,6 +101,19 @@ data class StreamingSearchItem(
 ) {
   val typeLabel: String
     get() = if (objectType.equals("SHOW", ignoreCase = true)) "TV Show" else "Movie"
+
+  val formattedRuntime: String?
+    get() {
+      val mins = runtimeMinutes ?: return null
+      if (mins <= 0) return null
+      val h = mins / 60
+      val m = mins % 60
+      return when {
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
+      }
+    }
 }
 
 enum class JustWatchRegion(val code: String, val label: String, val ratingExample: String) {
@@ -514,6 +542,9 @@ data class LauncherSettings(
   val showTileTitles: Boolean = true,
   val showTvInputsButton: Boolean = true,
   val lockHomeLayout: Boolean = false,
+  val minimalistDockMode: Boolean = false,
+  val tileOpacity: Float = 1.0f,
+  val tileSpacing: String = HomeTileSpacing.NORMAL.id,
   val homeTileSize: String = HomeTileSize.MEDIUM.id,
   val disabledSearchProviders: Set<String> = emptySet(),
   val justWatchFilterServices: Boolean = false,
@@ -523,6 +554,7 @@ data class LauncherSettings(
   val justWatchRegion: String = JustWatchRegion.GB.code,
   val justWatchShowRottenTomatoes: Boolean = true,
   val justWatchShowAgeRating: Boolean = true,
+  val searchOpenDetailsPopup: Boolean = true,
   val gridColumns: Int = 5,
   val hasInitializedFavorites: Boolean = false,
   val screensaverEnabled: Boolean = false,

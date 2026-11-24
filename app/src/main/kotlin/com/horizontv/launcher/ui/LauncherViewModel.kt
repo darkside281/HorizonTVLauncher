@@ -27,6 +27,7 @@ import com.horizontv.launcher.model.AppMenuTarget
 import com.horizontv.launcher.model.AppRow
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
+import com.horizontv.launcher.model.HomeTileSpacing
 import com.horizontv.launcher.model.JellyfinBackdrop
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
@@ -1782,6 +1783,22 @@ class LauncherViewModel(
     updateSettings { it.copy(homeTileSize = resolved.id) }
   }
 
+  fun toggleMinimalistDockMode() {
+    val next = !_uiState.value.settings.minimalistDockMode
+    updateSettings { it.copy(minimalistDockMode = next) }
+    showStatus(if (next) "Minimalist Bottom-Dock enabled" else "Standard Home dock enabled")
+  }
+
+  fun setTileOpacity(opacity: Float) {
+    val clamped = opacity.coerceIn(0.35f, 1.0f)
+    updateSettings { it.copy(tileOpacity = clamped) }
+  }
+
+  fun setTileSpacing(spacingId: String) {
+    val resolved = HomeTileSpacing.fromId(spacingId)
+    updateSettings { it.copy(tileSpacing = resolved.id) }
+  }
+
   fun toggleShowNonLeanbackApps() {
     updateSettings { it.copy(showNonLeanbackApps = !it.showNonLeanbackApps) }
   }
@@ -1792,6 +1809,12 @@ class LauncherViewModel(
     if (!nextShow && _uiState.value.isSearchVisible) {
       toggleSearch()
     }
+  }
+
+  fun toggleSearchOpenDetailsPopup() {
+    val next = !_uiState.value.settings.searchOpenDetailsPopup
+    updateSettings { it.copy(searchOpenDetailsPopup = next) }
+    showStatus(if (next) "Search results open full details popup" else "Search results launch streaming apps directly")
   }
 
   fun toggleShowAllAppsSection() {

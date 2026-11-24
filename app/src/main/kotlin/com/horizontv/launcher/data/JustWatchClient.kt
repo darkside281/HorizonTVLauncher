@@ -147,10 +147,40 @@ class JustWatchClient : StreamingSearchDataSource {
       if (id.isEmpty() || title.isEmpty()) continue
 
       val year = content.optInt("originalReleaseYear", 0).takeIf { it > 1800 }
+      val runtimeMinutes = if (!content.isNull("runtime")) {
+        content.optInt("runtime", 0).takeIf { it > 0 }
+      } else {
+        null
+      }
       val shortDescription = if (!content.isNull("shortDescription")) {
         content.optString("shortDescription", "").trim().replace(Regex("\\s+"), " ").ifEmpty { null }
       } else {
         null
+      }
+      val genres = buildList {
+        val arr = content.optJSONArray("genres")
+        if (arr != null) {
+          for (g in 0 until arr.length()) {
+            val label = arr.optJSONObject(g)?.optString("translation", "")?.trim().orEmpty()
+            if (label.isNotEmpty() && label !in this) add(label)
+            if (size >= 4) break
+          }
+        }
+      }
+      val cast = mutableListOf<String>()
+      val directors = mutableListOf<String>()
+      val creditsArr = content.optJSONArray("credits")
+      if (creditsArr != null) {
+        for (c in 0 until creditsArr.length()) {
+          val credit = creditsArr.optJSONObject(c) ?: continue
+          val role = credit.optString("role", "").trim().uppercase()
+          val name = credit.optString("name", "").trim()
+          if (name.isEmpty()) continue
+          when (role) {
+            "ACTOR" -> if (cast.size < 6 && name !in cast) cast.add(name)
+            "DIRECTOR" -> if (directors.size < 2 && name !in directors) directors.add(name)
+          }
+        }
       }
       val ageCertification = if (!content.isNull("ageCertification")) {
         content.optString("ageCertification", "").trim().ifEmpty { null }
@@ -232,7 +262,11 @@ class JustWatchClient : StreamingSearchDataSource {
           title = title,
           objectType = objectType,
           year = year,
+          runtimeMinutes = runtimeMinutes,
           shortDescription = shortDescription,
+          genres = genres,
+          cast = cast,
+          directors = directors,
           ageCertification = ageCertification,
           imdbScore = imdbScore,
           tomatoMeter = tomatoMeter,
@@ -407,9 +441,17 @@ class JustWatchClient : StreamingSearchDataSource {
               content(country: ${'$'}country, language: ${'$'}language) {
                 title
                 originalReleaseYear
+                runtime
                 shortDescription
                 ageCertification
                 posterUrl
+                genres {
+                  translation(language: ${'$'}language)
+                }
+                credits {
+                  role
+                  name
+                }
                 scoring {
                   imdbScore
                   tomatoMeter

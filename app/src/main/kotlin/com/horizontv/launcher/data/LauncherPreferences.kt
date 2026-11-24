@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.horizontv.launcher.model.AppRow
 import com.horizontv.launcher.model.HomeTileSize
+import com.horizontv.launcher.model.HomeTileSpacing
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JustWatchRegion
 import com.horizontv.launcher.model.LauncherSettings
@@ -70,6 +71,9 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("showTileTitles", settings.showTileTitles)
     root.put("showTvInputsButton", settings.showTvInputsButton)
     root.put("lockHomeLayout", settings.lockHomeLayout)
+    root.put("minimalistDockMode", settings.minimalistDockMode)
+    root.put("tileOpacity", settings.tileOpacity.toDouble())
+    root.put("tileSpacing", settings.tileSpacing)
     root.put("updateCheckSchedule", settings.updateCheckSchedule)
     root.put("parentalPin", settings.parentalPin)
     root.put("pinProtectSettings", settings.pinProtectSettings)
@@ -89,6 +93,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("justWatchRegion", settings.justWatchRegion)
     root.put("justWatchShowRottenTomatoes", settings.justWatchShowRottenTomatoes)
     root.put("justWatchShowAgeRating", settings.justWatchShowAgeRating)
+    root.put("searchOpenDetailsPopup", settings.searchOpenDetailsPopup)
     root.put("gridColumns", settings.gridColumns)
 
     val jellyfinObj = JSONObject().apply {
@@ -262,6 +267,11 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       showTileTitles = root.optBoolean("showTileTitles", existing.showTileTitles),
       showTvInputsButton = root.optBoolean("showTvInputsButton", existing.showTvInputsButton),
       lockHomeLayout = root.optBoolean("lockHomeLayout", existing.lockHomeLayout),
+      minimalistDockMode = root.optBoolean("minimalistDockMode", existing.minimalistDockMode),
+      tileOpacity = root.optDouble("tileOpacity", existing.tileOpacity.toDouble()).toFloat().coerceIn(0.35f, 1.0f),
+      tileSpacing = HomeTileSpacing.fromId(
+        root.optString("tileSpacing", existing.tileSpacing),
+      ).id,
       updateCheckSchedule = UpdateCheckSchedule.fromId(
         root.optString("updateCheckSchedule", existing.updateCheckSchedule),
       ).id,
@@ -318,6 +328,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       justWatchRegion = JustWatchRegion.fromCode(root.optString("justWatchRegion", existing.justWatchRegion)).code,
       justWatchShowRottenTomatoes = root.optBoolean("justWatchShowRottenTomatoes", existing.justWatchShowRottenTomatoes),
       justWatchShowAgeRating = root.optBoolean("justWatchShowAgeRating", existing.justWatchShowAgeRating),
+      searchOpenDetailsPopup = root.optBoolean("searchOpenDetailsPopup", existing.searchOpenDetailsPopup),
       gridColumns = root.optInt("gridColumns", existing.gridColumns).coerceIn(4, 6),
       wallpaperProvider = MediaWallpaperProvider.fromId(
         jf?.optString("provider", existing.wallpaperProvider) ?: existing.wallpaperProvider,
@@ -543,6 +554,11 @@ class LauncherPreferences(context: Context) : SettingsStore {
       showTileTitles = prefs.getBoolean(KEY_SHOW_TILE_TITLES, true),
       showTvInputsButton = prefs.getBoolean(KEY_SHOW_TV_INPUTS, true),
       lockHomeLayout = prefs.getBoolean(KEY_LOCK_HOME_LAYOUT, false),
+      minimalistDockMode = prefs.getBoolean(KEY_MINIMALIST_DOCK, false),
+      tileOpacity = prefs.getFloat(KEY_TILE_OPACITY, 1.0f).coerceIn(0.35f, 1.0f),
+      tileSpacing = HomeTileSpacing.fromId(
+        prefs.getString(KEY_TILE_SPACING, HomeTileSpacing.NORMAL.id),
+      ).id,
       homeTileSize = HomeTileSize.fromId(
         prefs.getString(KEY_HOME_TILE_SIZE, HomeTileSize.MEDIUM.id),
       ).id,
@@ -555,6 +571,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       justWatchRegion = JustWatchRegion.fromCode(prefs.getString(KEY_JW_REGION, JustWatchRegion.GB.code)).code,
       justWatchShowRottenTomatoes = prefs.getBoolean(KEY_JW_SHOW_RT, true),
       justWatchShowAgeRating = prefs.getBoolean(KEY_JW_SHOW_AGE_RATING, true),
+      searchOpenDetailsPopup = prefs.getBoolean(KEY_SEARCH_OPEN_DETAILS_POPUP, true),
       gridColumns = prefs.getInt(KEY_GRID_COLUMNS, 5).coerceIn(4, 6),
       hasInitializedFavorites = prefs.getBoolean(KEY_INIT_FAVORITES, false),
       screensaverEnabled = prefs.getBoolean(KEY_SS_ENABLED, false),
@@ -642,6 +659,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putBoolean(KEY_SHOW_TILE_TITLES, settings.showTileTitles)
       .putBoolean(KEY_SHOW_TV_INPUTS, settings.showTvInputsButton)
       .putBoolean(KEY_LOCK_HOME_LAYOUT, settings.lockHomeLayout)
+      .putBoolean(KEY_MINIMALIST_DOCK, settings.minimalistDockMode)
+      .putFloat(KEY_TILE_OPACITY, settings.tileOpacity.coerceIn(0.35f, 1.0f))
+      .putString(KEY_TILE_SPACING, settings.tileSpacing)
       .putString(KEY_HOME_TILE_SIZE, settings.homeTileSize)
       .putStringSet(KEY_DISABLED_SEARCH_PROVIDERS, settings.disabledSearchProviders)
       .putBoolean(KEY_JW_FILTER_SERVICES, settings.justWatchFilterServices)
@@ -651,6 +671,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putString(KEY_JW_REGION, settings.justWatchRegion)
       .putBoolean(KEY_JW_SHOW_RT, settings.justWatchShowRottenTomatoes)
       .putBoolean(KEY_JW_SHOW_AGE_RATING, settings.justWatchShowAgeRating)
+      .putBoolean(KEY_SEARCH_OPEN_DETAILS_POPUP, settings.searchOpenDetailsPopup)
       .putInt(KEY_GRID_COLUMNS, settings.gridColumns)
       .putBoolean(KEY_INIT_FAVORITES, settings.hasInitializedFavorites)
       .putBoolean(KEY_SS_ENABLED, settings.screensaverEnabled)
@@ -844,6 +865,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_SHOW_TILE_TITLES = "show_tile_titles"
     private const val KEY_SHOW_TV_INPUTS = "show_tv_inputs_button"
     private const val KEY_LOCK_HOME_LAYOUT = "lock_home_layout"
+    private const val KEY_MINIMALIST_DOCK = "minimalist_dock_mode"
+    private const val KEY_TILE_OPACITY = "tile_opacity"
+    private const val KEY_TILE_SPACING = "tile_spacing"
     private const val KEY_HOME_TILE_SIZE = "home_tile_size"
     private const val KEY_DISABLED_SEARCH_PROVIDERS = "disabled_search_providers"
     private const val KEY_JW_FILTER_SERVICES = "justwatch_filter_services"
@@ -853,6 +877,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_JW_REGION = "justwatch_region"
     private const val KEY_JW_SHOW_RT = "justwatch_show_rotten_tomatoes"
     private const val KEY_JW_SHOW_AGE_RATING = "justwatch_show_age_rating"
+    private const val KEY_SEARCH_OPEN_DETAILS_POPUP = "search_open_details_popup"
     private const val KEY_GRID_COLUMNS = "grid_columns"
     private const val KEY_INIT_FAVORITES = "has_initialized_favorites"
     private const val KEY_SS_ENABLED = "screensaver_enabled"
