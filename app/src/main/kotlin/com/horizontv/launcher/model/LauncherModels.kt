@@ -20,12 +20,14 @@ data class AppRow(
   val id: String,
   val title: String,
   val packageNames: List<String> = emptyList(),
+  val tileShape: String = TileAspectShape.BANNER_16_9.id,
 )
 
 data class ResolvedAppRow(
   val id: String,
   val title: String,
   val apps: List<AppInfo>,
+  val tileShape: TileAspectShape = TileAspectShape.BANNER_16_9,
 )
 
 data class ReorderTarget(
@@ -52,6 +54,93 @@ enum class HomeTileSpacing(val id: String, val label: String, val spacingDp: Int
   companion object {
     fun fromId(id: String?): HomeTileSpacing =
       entries.firstOrNull { it.id == id } ?: NORMAL
+  }
+}
+
+enum class TileAspectShape(val id: String, val label: String, val shortLabel: String) {
+  BANNER_16_9("banner_16_9", "16:9 Banner", "16:9"),
+  SQUARE_1_1("square_1_1", "1:1 Square", "1:1"),
+  POSTER_2_3("poster_2_3", "2:3 Poster", "2:3");
+
+  fun next(): TileAspectShape {
+    val all = entries
+    return all[(ordinal + 1) % all.size]
+  }
+
+  fun dimensionsFor(tileSize: HomeTileSize): Triple<Int, Int, Int> = when (this) {
+    BANNER_16_9 -> Triple(tileSize.widthDp, tileSize.heightDp, tileSize.iconSizeDp)
+    SQUARE_1_1 -> when (tileSize) {
+      HomeTileSize.SMALL -> Triple(112, 112, 56)
+      HomeTileSize.MEDIUM -> Triple(132, 132, 68)
+      HomeTileSize.LARGE -> Triple(156, 156, 80)
+    }
+    POSTER_2_3 -> when (tileSize) {
+      HomeTileSize.SMALL -> Triple(102, 148, 52)
+      HomeTileSize.MEDIUM -> Triple(118, 172, 64)
+      HomeTileSize.LARGE -> Triple(136, 198, 74)
+    }
+  }
+
+  companion object {
+    fun fromId(id: String?): TileAspectShape =
+      entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: BANNER_16_9
+  }
+}
+
+enum class TileCornerStyle(val id: String, val label: String, val radiusDp: Int) {
+  SHARP("sharp", "Sharp", 6),
+  ROUNDED("rounded", "Rounded", 16),
+  SOFT("soft", "Soft", 24);
+
+  companion object {
+    fun fromId(id: String?): TileCornerStyle =
+      entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: ROUNDED
+  }
+}
+
+enum class TileFocusStyle(val id: String, val label: String) {
+  GLOW("glow", "Accent Glow"),
+  OUTLINE("outline", "Crisp Outline"),
+  ZOOM("zoom", "Zoom Only"),
+  SHADOW("shadow", "Soft Shadow");
+
+  companion object {
+    fun fromId(id: String?): TileFocusStyle =
+      entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: GLOW
+  }
+}
+
+enum class ClockStyle(val id: String, val label: String) {
+  CLASSIC("classic", "Classic"),
+  CENTERED("centered", "Centered Cinema"),
+  ANALOG("analog", "Analog Dial"),
+  MINIMAL("minimal", "Minimal");
+
+  companion object {
+    fun fromId(id: String?): ClockStyle =
+      entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: CLASSIC
+  }
+}
+
+enum class ClockFontStyle(val id: String, val label: String) {
+  SANS("sans", "Modern Sans"),
+  SERIF("serif", "Editorial Serif"),
+  MONO("mono", "Tech Mono");
+
+  companion object {
+    fun fromId(id: String?): ClockFontStyle =
+      entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: SANS
+  }
+}
+
+enum class ClockFontWeight(val id: String, val label: String) {
+  LIGHT("light", "Light"),
+  REGULAR("regular", "Regular"),
+  BOLD("bold", "Bold");
+
+  companion object {
+    fun fromId(id: String?): ClockFontWeight =
+      entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: LIGHT
   }
 }
 
@@ -499,6 +588,7 @@ data class LauncherSettings(
   val accentId: String = "sky_cyan",
   val customWallpaperUri: String? = null,
   val wallpaperDimAlpha: Float = 0.45f,
+  val wallpaperKenBurns: Boolean = false,
   val wallpaperProvider: String = MediaWallpaperProvider.JELLYFIN.id,
   val jellyfinEnabled: Boolean = false,
   val jellyfinServerUrl: String = "",
@@ -535,6 +625,9 @@ data class LauncherSettings(
   val showClock: Boolean = true,
   val showDate: Boolean = true,
   val use24HourClock: Boolean = false,
+  val clockStyle: String = ClockStyle.CLASSIC.id,
+  val clockFontStyle: String = ClockFontStyle.SANS.id,
+  val clockFontWeight: String = ClockFontWeight.LIGHT.id,
   val showNonLeanbackApps: Boolean = true,
   val showSearchBar: Boolean = true,
   val showAllAppsSection: Boolean = true,
@@ -545,6 +638,8 @@ data class LauncherSettings(
   val minimalistDockMode: Boolean = false,
   val tileOpacity: Float = 1.0f,
   val tileSpacing: String = HomeTileSpacing.NORMAL.id,
+  val tileCornerStyle: String = TileCornerStyle.ROUNDED.id,
+  val tileFocusStyle: String = TileFocusStyle.GLOW.id,
   val homeTileSize: String = HomeTileSize.MEDIUM.id,
   val disabledSearchProviders: Set<String> = emptySet(),
   val justWatchFilterServices: Boolean = false,
@@ -902,6 +997,7 @@ data class LauncherUiState(
           id = row.id,
           title = row.title.ifBlank { "Row" },
           apps = row.packageNames.mapNotNull { byPackage[it] },
+          tileShape = TileAspectShape.fromId(row.tileShape),
         )
       }
     }

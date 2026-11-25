@@ -72,9 +72,15 @@ import androidx.compose.ui.unit.dp
 import com.horizontv.launcher.model.AccentPreset
 import com.horizontv.launcher.model.AppFilter
 import com.horizontv.launcher.model.AppInfo
+import com.horizontv.launcher.model.ClockFontStyle
+import com.horizontv.launcher.model.ClockFontWeight
+import com.horizontv.launcher.model.ClockStyle
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.HomeTileSpacing
+import com.horizontv.launcher.model.TileAspectShape
+import com.horizontv.launcher.model.TileCornerStyle
+import com.horizontv.launcher.model.TileFocusStyle
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinSearchItem
 import com.horizontv.launcher.model.JustWatchRegion
@@ -178,6 +184,7 @@ fun LauncherScreen(
   onPickWallpaper: () -> Unit,
   onClearWallpaper: () -> Unit,
   onSetWallpaperDim: (Float) -> Unit,
+  onToggleWallpaperKenBurns: () -> Unit = {},
   onSelectWallpaperProvider: (MediaWallpaperProvider) -> Unit,
   onOpenJellyfinSetup: () -> Unit,
   onCloseJellyfinSetup: () -> Unit,
@@ -240,6 +247,12 @@ fun LauncherScreen(
   onStopWebCompanion: () -> Unit = {},
   onSetTileOpacity: (Float) -> Unit = {},
   onSetTileSpacing: (String) -> Unit = {},
+  onSetTileCornerStyle: (String) -> Unit = {},
+  onSetTileFocusStyle: (String) -> Unit = {},
+  onCycleRowTileShape: (String) -> Unit = {},
+  onSetClockStyle: (String) -> Unit = {},
+  onSetClockFontStyle: (String) -> Unit = {},
+  onSetClockFontWeight: (String) -> Unit = {},
   onToggleShowClock: () -> Unit,
   onToggleShowDate: () -> Unit,
   onOpenAppInfo: (String) -> Unit,
@@ -500,6 +513,7 @@ fun LauncherScreen(
       jellyfinSlide = if (state.settings.jellyfinEnabled) state.jellyfinSlide else null,
       dimAlpha = state.settings.wallpaperDimAlpha,
       focusedTint = state.focusedApp?.tintColor,
+      kenBurnsEnabled = state.settings.wallpaperKenBurns,
     )
 
     if (state.isLoading) {
@@ -523,8 +537,26 @@ fun LauncherScreen(
       val minimalistMode = state.settings.minimalistDockMode
       val tileOpacity = state.settings.tileOpacity
       val tileSpacingDp = HomeTileSpacing.fromId(state.settings.tileSpacing).spacingDp.dp
+      val tileCornerStyle = remember(state.settings.tileCornerStyle) {
+        TileCornerStyle.fromId(state.settings.tileCornerStyle)
+      }
+      val tileFocusStyle = remember(state.settings.tileFocusStyle) {
+        TileFocusStyle.fromId(state.settings.tileFocusStyle)
+      }
+      val clockStyle = remember(state.settings.clockStyle) {
+        ClockStyle.fromId(state.settings.clockStyle)
+      }
+      val clockFontStyle = remember(state.settings.clockFontStyle) {
+        ClockFontStyle.fromId(state.settings.clockFontStyle)
+      }
+      val clockFontWeight = remember(state.settings.clockFontWeight) {
+        ClockFontWeight.fromId(state.settings.clockFontWeight)
+      }
+      val maxRowTileHeightDp = remember(resolvedRows, tileSize) {
+        resolvedRows.maxOfOrNull { it.tileShape.dimensionsFor(tileSize).second } ?: tileSize.heightDp
+      }
       val singleRowDockHeight = (
-        tileSize.heightDp +
+        maxRowTileHeightDp +
           (if (state.settings.showTileTitles) 108 else 82) -
           (if (minimalistMode) 36 else 0)
         ).dp
@@ -561,6 +593,9 @@ fun LauncherScreen(
               showClock = state.settings.showClock,
               showDate = state.settings.showDate,
               use24HourClock = state.settings.use24HourClock,
+              clockStyle = clockStyle,
+              clockFontStyle = clockFontStyle,
+              clockFontWeight = clockFontWeight,
               showSearchButton = state.settings.showSearchBar,
               isSearchActive = state.isSearchVisible,
               showTvInputsButton = state.settings.showTvInputsButton && state.tvInputs.isNotEmpty(),
@@ -752,6 +787,8 @@ fun LauncherScreen(
                     compactVerticalPadding = minimalistMode,
                     tileOpacity = tileOpacity,
                     tileSpacingDp = tileSpacingDp,
+                    cornerStyle = tileCornerStyle,
+                    focusStyle = tileFocusStyle,
                     showAddTile = state.settings.showAddAppTile && !state.settings.lockHomeLayout,
                     onAddApps = { onOpenAddAppsToRow(heroRow.id) },
                   )
@@ -1207,6 +1244,7 @@ fun LauncherScreen(
         onPickWallpaper = onPickWallpaper,
         onClearWallpaper = onClearWallpaper,
         onSetWallpaperDim = onSetWallpaperDim,
+        onToggleWallpaperKenBurns = onToggleWallpaperKenBurns,
         onSelectWallpaperProvider = onSelectWallpaperProvider,
         onOpenJellyfinSetup = onOpenJellyfinSetup,
         onToggleJellyfinSlideshow = onToggleJellyfinSlideshow,
@@ -1250,6 +1288,12 @@ fun LauncherScreen(
         onToggleMinimalistDockMode = onToggleMinimalistDockMode,
         onSetTileOpacity = onSetTileOpacity,
         onSetTileSpacing = onSetTileSpacing,
+        onSetTileCornerStyle = onSetTileCornerStyle,
+        onSetTileFocusStyle = onSetTileFocusStyle,
+        onCycleRowTileShape = onCycleRowTileShape,
+        onSetClockStyle = onSetClockStyle,
+        onSetClockFontStyle = onSetClockFontStyle,
+        onSetClockFontWeight = onSetClockFontWeight,
         onToggleShowClock = onToggleShowClock,
         onToggleShowDate = onToggleShowDate,
         onToggle24HourClock = onToggle24HourClock,
@@ -1406,6 +1450,8 @@ private fun CustomAppRowSection(
   compactVerticalPadding: Boolean = false,
   tileOpacity: Float = 1.0f,
   tileSpacingDp: androidx.compose.ui.unit.Dp = 20.dp,
+  cornerStyle: TileCornerStyle = TileCornerStyle.ROUNDED,
+  focusStyle: TileFocusStyle = TileFocusStyle.GLOW,
   showAddTile: Boolean,
   onAddApps: () -> Unit,
 ) {
@@ -1456,6 +1502,9 @@ private fun CustomAppRowSection(
           onMoveRight = { onMoveApp(app.packageName, +1) },
           onFinishReorder = onFinishReorder,
           tileSize = tileSize,
+          tileShape = row.tileShape,
+          cornerStyle = cornerStyle,
+          focusStyle = focusStyle,
           showTitle = showTileTitles,
           isPinLocked = isAppPinLocked(app.packageName),
           tileOpacity = tileOpacity,
@@ -1474,6 +1523,9 @@ private fun CustomAppRowSection(
             onFocused = { onAppFocused(null) },
             onClick = onAddApps,
             tileSize = tileSize,
+            tileShape = row.tileShape,
+            cornerStyle = cornerStyle,
+            focusStyle = focusStyle,
             showTitle = showTileTitles,
             tileOpacity = tileOpacity,
             blockLeft = row.apps.isEmpty(),

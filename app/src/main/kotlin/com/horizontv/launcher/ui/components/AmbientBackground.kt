@@ -5,6 +5,11 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -21,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +43,7 @@ fun AmbientBackground(
   dimAlpha: Float,
   focusedTint: Color?,
   modifier: Modifier = Modifier,
+  kenBurnsEnabled: Boolean = false,
 ) {
   val context = LocalContext.current
   val customBitmap by produceState<ImageBitmap?>(initialValue = null, key1 = customWallpaperUri) {
@@ -45,6 +52,34 @@ fun AmbientBackground(
     } else {
       loadDownsampledWallpaper(context, customWallpaperUri)
     }
+  }
+
+  val hasImageBackdrop = jellyfinSlide != null || customBitmap != null
+  val kenBurnsPhase = if (kenBurnsEnabled && hasImageBackdrop) {
+    val infiniteTransition = rememberInfiniteTransition(label = "homeWallpaperMotion")
+    infiniteTransition.animateFloat(
+      initialValue = 0f,
+      targetValue = 1f,
+      animationSpec = infiniteRepeatable(
+        animation = tween(durationMillis = 28_000, easing = LinearEasing),
+        repeatMode = RepeatMode.Reverse,
+      ),
+      label = "homeKenBurnsPhase",
+    ).value
+  } else {
+    0f
+  }
+
+  val motionModifier = if (kenBurnsEnabled && hasImageBackdrop) {
+    Modifier.graphicsLayer {
+      val scale = 1.04f + (kenBurnsPhase * 0.10f)
+      scaleX = scale
+      scaleY = scale
+      translationX = (kenBurnsPhase - 0.5f) * size.width * 0.045f
+      translationY = (0.5f - kenBurnsPhase) * size.height * 0.032f
+    }
+  } else {
+    Modifier
   }
 
   val animatedTopGlow by animateColorAsState(
@@ -80,7 +115,9 @@ fun AmbientBackground(
           bitmap = slide.image,
           contentDescription = slide.backdrop.title,
           contentScale = ContentScale.Crop,
-          modifier = Modifier.fillMaxSize(),
+          modifier = Modifier
+            .fillMaxSize()
+            .then(motionModifier),
         )
       }
       WallpaperReadabilityScrim(dimAlpha = dimAlpha)
@@ -89,7 +126,9 @@ fun AmbientBackground(
         bitmap = customBitmap!!,
         contentDescription = null,
         contentScale = ContentScale.Crop,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+          .fillMaxSize()
+          .then(motionModifier),
       )
       WallpaperReadabilityScrim(dimAlpha = dimAlpha)
     } else {

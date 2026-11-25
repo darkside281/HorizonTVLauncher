@@ -349,6 +349,7 @@ class MainActivity : ComponentActivity() {
           onPickWallpaper = cb.onPickWallpaper,
           onClearWallpaper = cb.onClearWallpaper,
           onSetWallpaperDim = cb.onSetWallpaperDim,
+          onToggleWallpaperKenBurns = cb.onToggleWallpaperKenBurns,
           onSelectWallpaperProvider = cb.onSelectWallpaperProvider,
           onOpenJellyfinSetup = cb.onOpenJellyfinSetup,
           onCloseJellyfinSetup = cb.onCloseJellyfinSetup,
@@ -411,6 +412,12 @@ class MainActivity : ComponentActivity() {
           onStopWebCompanion = cb.onStopWebCompanion,
           onSetTileOpacity = cb.onSetTileOpacity,
           onSetTileSpacing = cb.onSetTileSpacing,
+          onSetTileCornerStyle = cb.onSetTileCornerStyle,
+          onSetTileFocusStyle = cb.onSetTileFocusStyle,
+          onCycleRowTileShape = cb.onCycleRowTileShape,
+          onSetClockStyle = cb.onSetClockStyle,
+          onSetClockFontStyle = cb.onSetClockFontStyle,
+          onSetClockFontWeight = cb.onSetClockFontWeight,
           onToggleShowClock = cb.onToggleShowClock,
           onToggleShowDate = cb.onToggleShowDate,
           onOpenAppInfo = cb.onOpenAppInfo,
@@ -528,6 +535,7 @@ class MainActivity : ComponentActivity() {
     }
     val onClearWallpaper: () -> Unit = { vm.setCustomWallpaper(null) }
     val onSetWallpaperDim = vm::setWallpaperDimAlpha
+    val onToggleWallpaperKenBurns = vm::toggleWallpaperKenBurns
     val onSelectWallpaperProvider = vm::selectWallpaperProvider
     val onOpenJellyfinSetup: () -> Unit = { vm.openJellyfinSetup() }
     val onCloseJellyfinSetup = vm::closeJellyfinSetup
@@ -592,6 +600,12 @@ class MainActivity : ComponentActivity() {
     val onStopWebCompanion = vm::stopWebCompanion
     val onSetTileOpacity = vm::setTileOpacity
     val onSetTileSpacing = vm::setTileSpacing
+    val onSetTileCornerStyle = vm::setTileCornerStyle
+    val onSetTileFocusStyle = vm::setTileFocusStyle
+    val onCycleRowTileShape = vm::cycleRowTileShape
+    val onSetClockStyle = vm::setClockStyle
+    val onSetClockFontStyle = vm::setClockFontStyle
+    val onSetClockFontWeight = vm::setClockFontWeight
     val onToggleShowClock = vm::toggleShowClock
     val onToggleShowDate = vm::toggleShowDate
     val onOpenAppInfo = vm::openAppInfo

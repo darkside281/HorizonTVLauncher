@@ -87,9 +87,15 @@ import com.horizontv.launcher.model.AccentPreset
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.AppUpdateInfo
 import com.horizontv.launcher.model.AppRow
+import com.horizontv.launcher.model.ClockFontStyle
+import com.horizontv.launcher.model.ClockFontWeight
+import com.horizontv.launcher.model.ClockStyle
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.HomeTileSpacing
+import com.horizontv.launcher.model.TileAspectShape
+import com.horizontv.launcher.model.TileCornerStyle
+import com.horizontv.launcher.model.TileFocusStyle
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JustWatchRegion
@@ -148,6 +154,7 @@ fun SettingsOverlay(
   onPickWallpaper: () -> Unit,
   onClearWallpaper: () -> Unit,
   onSetWallpaperDim: (Float) -> Unit,
+  onToggleWallpaperKenBurns: () -> Unit = {},
   onSelectWallpaperProvider: (MediaWallpaperProvider) -> Unit,
   onOpenJellyfinSetup: () -> Unit,
   onToggleJellyfinSlideshow: () -> Unit,
@@ -191,6 +198,12 @@ fun SettingsOverlay(
   onToggleMinimalistDockMode: () -> Unit = {},
   onSetTileOpacity: (Float) -> Unit = {},
   onSetTileSpacing: (String) -> Unit = {},
+  onSetTileCornerStyle: (String) -> Unit = {},
+  onSetTileFocusStyle: (String) -> Unit = {},
+  onCycleRowTileShape: (String) -> Unit = {},
+  onSetClockStyle: (String) -> Unit = {},
+  onSetClockFontStyle: (String) -> Unit = {},
+  onSetClockFontWeight: (String) -> Unit = {},
   onToggleShowClock: () -> Unit,
   onToggleShowDate: () -> Unit,
   onToggle24HourClock: () -> Unit,
@@ -498,6 +511,12 @@ fun SettingsOverlay(
                     onToggleMinimalistDockMode = onToggleMinimalistDockMode,
                     onSetTileOpacity = onSetTileOpacity,
                     onSetTileSpacing = onSetTileSpacing,
+                    onSetTileCornerStyle = onSetTileCornerStyle,
+                    onSetTileFocusStyle = onSetTileFocusStyle,
+                    onCycleRowTileShape = onCycleRowTileShape,
+                    onSetClockStyle = onSetClockStyle,
+                    onSetClockFontStyle = onSetClockFontStyle,
+                    onSetClockFontWeight = onSetClockFontWeight,
                     onToggleShowTileTitles = onToggleShowTileTitles,
                     onToggleShowAddAppTile = onToggleShowAddAppTile,
                     onToggleShowTvInputsButton = onToggleShowTvInputsButton,
@@ -557,6 +576,7 @@ fun SettingsOverlay(
                     onSetJellyfinInterval = onSetJellyfinInterval,
                     onToggleJellyfinShowTitle = onToggleJellyfinShowTitle,
                     onSetWallpaperDim = onSetWallpaperDim,
+                    onToggleWallpaperKenBurns = onToggleWallpaperKenBurns,
                     onNextJellyfinBackdrop = onNextJellyfinBackdrop,
                   )
                 }
@@ -619,6 +639,7 @@ fun SettingsOverlay(
                     onPickWallpaper = onPickWallpaper,
                     onClearWallpaper = onClearWallpaper,
                     onSetWallpaperDim = onSetWallpaperDim,
+                    onToggleWallpaperKenBurns = onToggleWallpaperKenBurns,
                     onSelectAccent = onSelectAccent,
                   )
                 }
@@ -724,6 +745,12 @@ private fun SettingsHomePane(
   onToggleMinimalistDockMode: () -> Unit,
   onSetTileOpacity: (Float) -> Unit,
   onSetTileSpacing: (String) -> Unit,
+  onSetTileCornerStyle: (String) -> Unit,
+  onSetTileFocusStyle: (String) -> Unit,
+  onCycleRowTileShape: (String) -> Unit,
+  onSetClockStyle: (String) -> Unit,
+  onSetClockFontStyle: (String) -> Unit,
+  onSetClockFontWeight: (String) -> Unit,
   onToggleShowTileTitles: () -> Unit,
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTvInputsButton: () -> Unit,
@@ -734,8 +761,10 @@ private fun SettingsHomePane(
   onSetGridColumns: (Int) -> Unit,
 ) {
   val homeTabs = listOf(
-    0 to "Rows & Tiles",
-    1 to "Clock & All Apps",
+    0 to "Rows",
+    1 to "Tile Style",
+    2 to "Clock & Header",
+    3 to "All Apps",
   )
   Row(
     modifier = Modifier.fillMaxWidth(),
@@ -778,7 +807,7 @@ private fun SettingsHomePane(
       )
 
       if (!settings.lockHomeLayout) {
-        SettingsFieldLabel("Home Rows")
+        SettingsFieldLabel("Home Rows (Tap 16:9 / 1:1 / 2:3 to Change Row Shape)")
         settings.rows.forEachIndexed { index, row ->
           RowManageItem(
             row = row,
@@ -787,6 +816,7 @@ private fun SettingsHomePane(
             canDelete = settings.rows.size > 1,
             accent = accent,
             firstFocusModifier = Modifier.focusProperties { left = activeTabRequester },
+            onCycleShape = { onCycleRowTileShape(row.id) },
             onManageApps = { onManageRowApps(row.id) },
             onOrderApps = { onOrderRowApps(row.id) },
             onRename = { onRenameRow(row.id) },
@@ -806,29 +836,9 @@ private fun SettingsHomePane(
             .focusProperties { left = activeTabRequester },
         )
       }
+    }
 
-      Spacer(modifier = Modifier.height(4.dp))
-      SettingsFieldLabel("Tiles & Top Bar")
-
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        HomeTileSize.entries.forEachIndexed { idx, tileSize ->
-          SelectablePill(
-            label = "${tileSize.label} Tiles",
-            selected = HomeTileSize.fromId(settings.homeTileSize) == tileSize,
-            accent = accent,
-            onClick = { onSetHomeTileSize(tileSize.id) },
-            modifier = Modifier
-              .weight(1f)
-              .then(
-                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
-              ),
-          )
-        }
-      }
-
+    1 -> {
       SettingsToggleRow(
         title = "Minimalist Bottom-Dock Mode",
         subtitle = if (settings.minimalistDockMode) {
@@ -841,6 +851,78 @@ private fun SettingsHomePane(
         onClick = onToggleMinimalistDockMode,
         modifier = Modifier.focusProperties { left = activeTabRequester },
       )
+
+      SettingsFieldLabel("Tile Size")
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        HomeTileSize.entries.forEachIndexed { idx, tileSize ->
+          SelectablePill(
+            label = "${tileSize.label} Tiles",
+            selected = HomeTileSize.fromId(settings.homeTileSize) == tileSize,
+            accent = accent,
+            onClick = { onSetHomeTileSize(tileSize.id) },
+            modifier = Modifier
+              .weight(1f)
+              .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+          )
+        }
+      }
+
+      SettingsFieldLabel("Corner Roundness")
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        TileCornerStyle.entries.forEachIndexed { idx, corner ->
+          SelectablePill(
+            label = corner.label,
+            selected = TileCornerStyle.fromId(settings.tileCornerStyle) == corner,
+            accent = accent,
+            onClick = { onSetTileCornerStyle(corner.id) },
+            modifier = Modifier
+              .weight(1f)
+              .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+          )
+        }
+      }
+
+      SettingsFieldLabel("Focus Border Style")
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        TileFocusStyle.entries.forEachIndexed { idx, focus ->
+          SelectablePill(
+            label = focus.label,
+            selected = TileFocusStyle.fromId(settings.tileFocusStyle) == focus,
+            accent = accent,
+            onClick = { onSetTileFocusStyle(focus.id) },
+            modifier = Modifier
+              .weight(1f)
+              .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+          )
+        }
+      }
+
+      SettingsFieldLabel("Tile Spacing")
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        HomeTileSpacing.entries.forEachIndexed { idx, spacing ->
+          SelectablePill(
+            label = spacing.label,
+            selected = HomeTileSpacing.fromId(settings.tileSpacing) == spacing,
+            accent = accent,
+            onClick = { onSetTileSpacing(spacing.id) },
+            modifier = Modifier
+              .weight(1f)
+              .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+          )
+        }
+      }
 
       SettingsFieldLabel("Tile Opacity (Unfocused)")
       Row(
@@ -861,29 +943,7 @@ private fun SettingsHomePane(
             onClick = { onSetTileOpacity(alpha) },
             modifier = Modifier
               .weight(1f)
-              .then(
-                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
-              ),
-          )
-        }
-      }
-
-      SettingsFieldLabel("Tile Spacing")
-      Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        HomeTileSpacing.entries.forEachIndexed { idx, spacing ->
-          SelectablePill(
-            label = spacing.label,
-            selected = HomeTileSpacing.fromId(settings.tileSpacing) == spacing,
-            accent = accent,
-            onClick = { onSetTileSpacing(spacing.id) },
-            modifier = Modifier
-              .weight(1f)
-              .then(
-                if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier,
-              ),
+              .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
           )
         }
       }
@@ -907,7 +967,7 @@ private fun SettingsHomePane(
           subtitle = if (settings.showAddAppTile) {
             "Enabled — show the + Add App tile at the end of each row"
           } else {
-            "Hidden — use + above or Hold OK to edit row apps"
+            "Hidden — use Rows tab or Hold OK to edit row apps"
           },
           checked = settings.showAddAppTile,
           accent = accent,
@@ -915,6 +975,91 @@ private fun SettingsHomePane(
           modifier = Modifier.focusProperties { left = activeTabRequester },
         )
       }
+    }
+
+    2 -> {
+      SettingsToggleRow(
+        title = "Show Clock",
+        subtitle = if (settings.showClock) "Clock shown in the Home header" else "Clock hidden",
+        checked = settings.showClock,
+        accent = accent,
+        onClick = onToggleShowClock,
+        modifier = Modifier.focusProperties { left = activeTabRequester },
+      )
+
+      if (settings.showClock) {
+        SettingsFieldLabel("Clock Layout Style")
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          ClockStyle.entries.forEachIndexed { idx, style ->
+            SelectablePill(
+              label = style.label,
+              selected = ClockStyle.fromId(settings.clockStyle) == style,
+              accent = accent,
+              onClick = { onSetClockStyle(style.id) },
+              modifier = Modifier
+                .weight(1f)
+                .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+            )
+          }
+        }
+
+        SettingsFieldLabel("Clock Font Style")
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          ClockFontStyle.entries.forEachIndexed { idx, font ->
+            SelectablePill(
+              label = font.label,
+              selected = ClockFontStyle.fromId(settings.clockFontStyle) == font,
+              accent = accent,
+              onClick = { onSetClockFontStyle(font.id) },
+              modifier = Modifier
+                .weight(1f)
+                .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+            )
+          }
+        }
+
+        SettingsFieldLabel("Clock Font Weight")
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          ClockFontWeight.entries.forEachIndexed { idx, weight ->
+            SelectablePill(
+              label = weight.label,
+              selected = ClockFontWeight.fromId(settings.clockFontWeight) == weight,
+              accent = accent,
+              onClick = { onSetClockFontWeight(weight.id) },
+              modifier = Modifier
+                .weight(1f)
+                .then(if (idx == 0) Modifier.focusProperties { left = activeTabRequester } else Modifier),
+            )
+          }
+        }
+
+        SettingsToggleRow(
+          title = "24-Hour Clock",
+          subtitle = if (settings.use24HourClock) "22:45 format (24-hour)" else "10:45 PM format (12-hour)",
+          checked = settings.use24HourClock,
+          accent = accent,
+          onClick = onToggle24HourClock,
+          modifier = Modifier.focusProperties { left = activeTabRequester },
+        )
+      }
+
+      SettingsToggleRow(
+        title = "Show Date",
+        subtitle = if (settings.showDate) "Day, date & month shown with clock" else "Date hidden",
+        checked = settings.showDate,
+        accent = accent,
+        onClick = onToggleShowDate,
+        modifier = Modifier.focusProperties { left = activeTabRequester },
+      )
 
       SettingsToggleRow(
         title = "Show TV Inputs (HDMI) Button",
@@ -931,38 +1076,6 @@ private fun SettingsHomePane(
     }
 
     else -> {
-      SettingsFieldLabel("Clock & Date")
-
-      SettingsToggleRow(
-        title = "Show Clock",
-        subtitle = if (settings.showClock) "Large hero clock shown top-left" else "Clock hidden",
-        checked = settings.showClock,
-        accent = accent,
-        onClick = onToggleShowClock,
-        modifier = Modifier.focusProperties { left = activeTabRequester },
-      )
-
-      if (settings.showClock) {
-        SettingsToggleRow(
-          title = "24-Hour Clock",
-          subtitle = if (settings.use24HourClock) "22:45 format (24-hour)" else "10:45 PM format (12-hour)",
-          checked = settings.use24HourClock,
-          accent = accent,
-          onClick = onToggle24HourClock,
-          modifier = Modifier.focusProperties { left = activeTabRequester },
-        )
-      }
-
-      SettingsToggleRow(
-        title = "Show Date",
-        subtitle = if (settings.showDate) "Day, date & month shown under clock" else "Date hidden",
-        checked = settings.showDate,
-        accent = accent,
-        onClick = onToggleShowDate,
-        modifier = Modifier.focusProperties { left = activeTabRequester },
-      )
-
-      Spacer(modifier = Modifier.height(4.dp))
       SettingsFieldLabel("All Apps Grid")
 
       SettingsToggleRow(
@@ -975,6 +1088,7 @@ private fun SettingsHomePane(
       )
 
       if (settings.showAllAppsSection) {
+        SettingsFieldLabel("Grid Columns")
         Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1425,6 +1539,7 @@ private fun SettingsWallpapersPane(
   onSetJellyfinInterval: (Int) -> Unit,
   onToggleJellyfinShowTitle: () -> Unit,
   onSetWallpaperDim: (Float) -> Unit,
+  onToggleWallpaperKenBurns: () -> Unit = {},
   onNextJellyfinBackdrop: () -> Unit,
 ) {
   val activeProvider = settings.activeWallpaperProvider
@@ -1712,6 +1827,19 @@ private fun SettingsWallpapersPane(
             accent = accent,
             leftFocusRequester = activeTabRequester,
             onSetDim = onSetWallpaperDim,
+          )
+
+          SettingsToggleRow(
+            title = "Ken Burns Slow Motion",
+            subtitle = if (settings.wallpaperKenBurns) {
+              "Enabled — gently zooms & pans your Home wallpaper like the screensaver"
+            } else {
+              "Off — static Home wallpaper"
+            },
+            checked = settings.wallpaperKenBurns,
+            accent = accent,
+            onClick = onToggleWallpaperKenBurns,
+            modifier = Modifier.focusProperties { left = activeTabRequester },
           )
 
           SettingsActionChip(
@@ -2276,6 +2404,7 @@ private fun SettingsAppearancePane(
   onPickWallpaper: () -> Unit,
   onClearWallpaper: () -> Unit,
   onSetWallpaperDim: (Float) -> Unit,
+  onToggleWallpaperKenBurns: () -> Unit = {},
   onSelectAccent: (String) -> Unit,
 ) {
   SettingsFieldLabel("Ambient Background Themes")
@@ -2338,6 +2467,18 @@ private fun SettingsAppearancePane(
       accent = accent,
       leftFocusRequester = activeTabRequester,
       onSetDim = onSetWallpaperDim,
+    )
+    SettingsToggleRow(
+      title = "Ken Burns Slow Motion",
+      subtitle = if (settings.wallpaperKenBurns) {
+        "Enabled — gently zooms & pans your Home wallpaper like the screensaver"
+      } else {
+        "Off — static Home wallpaper"
+      },
+      checked = settings.wallpaperKenBurns,
+      accent = accent,
+      onClick = onToggleWallpaperKenBurns,
+      modifier = Modifier.focusProperties { left = activeTabRequester },
     )
   }
 
@@ -3135,6 +3276,7 @@ private fun RowManageItem(
   canDelete: Boolean,
   accent: AccentPreset,
   firstFocusModifier: Modifier,
+  onCycleShape: () -> Unit,
   onManageApps: () -> Unit,
   onOrderApps: () -> Unit,
   onRename: () -> Unit,
@@ -3142,6 +3284,7 @@ private fun RowManageItem(
   onMoveDown: () -> Unit,
   onDelete: () -> Unit,
 ) {
+  val shape = TileAspectShape.fromId(row.tileShape)
   Surface(
     shape = RoundedCornerShape(14.dp),
     color = Color.White.copy(alpha = 0.06f),
@@ -3165,6 +3308,7 @@ private fun RowManageItem(
         Text(
           text = buildString {
             append("${row.packageNames.size} app${if (row.packageNames.size == 1) "" else "s"}")
+            append(" • ${shape.label}")
             if (isFirst) append(" • Hero dock")
           },
           style = MaterialTheme.typography.labelMedium,
@@ -3172,12 +3316,19 @@ private fun RowManageItem(
         )
       }
 
+      SelectablePill(
+        label = shape.shortLabel,
+        selected = shape != TileAspectShape.BANNER_16_9,
+        accent = accent,
+        onClick = onCycleShape,
+        modifier = firstFocusModifier,
+      )
+
       RowSmallActionButton(
         icon = Icons.Rounded.Add,
         contentDescription = "Add or Remove Apps in ${row.title}",
         accent = accent,
         onClick = onManageApps,
-        modifier = firstFocusModifier,
       )
       if (row.packageNames.size >= 2) {
         RowSmallActionButton(

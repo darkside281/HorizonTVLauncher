@@ -69,6 +69,9 @@ import androidx.compose.ui.zIndex
 import com.horizontv.launcher.model.AccentPreset
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.HomeTileSize
+import com.horizontv.launcher.model.TileAspectShape
+import com.horizontv.launcher.model.TileCornerStyle
+import com.horizontv.launcher.model.TileFocusStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -91,6 +94,9 @@ fun FavoriteBannerCard(
   onFinishReorder: () -> Unit,
   modifier: Modifier = Modifier,
   tileSize: HomeTileSize = HomeTileSize.MEDIUM,
+  tileShape: TileAspectShape = TileAspectShape.BANNER_16_9,
+  cornerStyle: TileCornerStyle = TileCornerStyle.ROUNDED,
+  focusStyle: TileFocusStyle = TileFocusStyle.GLOW,
   showTitle: Boolean = true,
   isPinLocked: Boolean = false,
   tileOpacity: Float = 1.0f,
@@ -114,53 +120,83 @@ fun FavoriteBannerCard(
     }
   }
 
+  val (cardWidthDp, cardHeightDp, cardIconDp) = remember(tileSize, tileShape) {
+    tileShape.dimensionsFor(tileSize)
+  }
+  val cornerRadius = cornerStyle.radiusDp.dp
+  val cardShape = RoundedCornerShape(cornerRadius)
+  val activeFocus = isFocused || isReordering
+
+  val targetScale = when {
+    isReordering -> 1.09f
+    isFocused -> when (focusStyle) {
+      TileFocusStyle.ZOOM -> 1.11f
+      TileFocusStyle.SHADOW -> 1.06f
+      else -> 1.08f
+    }
+    else -> 1f
+  }
   val scale by animateFloatAsState(
-    targetValue = when {
-      isReordering -> 1.09f
-      isFocused -> 1.08f
-      else -> 1f
-    },
+    targetValue = targetScale,
     animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f),
     label = "favScale",
   )
   val liftOffset by animateDpAsState(
-    targetValue = if (isFocused || isReordering) (-7).dp else 0.dp,
+    targetValue = if (activeFocus) {
+      if (focusStyle == TileFocusStyle.SHADOW) (-9).dp else (-7).dp
+    } else {
+      0.dp
+    },
     animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
     label = "favLift",
   )
   val borderWidth by animateDpAsState(
-    targetValue = if (isFocused || isReordering) 3.dp else 1.dp,
+    targetValue = when {
+      isReordering -> 3.dp
+      isFocused -> when (focusStyle) {
+        TileFocusStyle.GLOW -> 3.dp
+        TileFocusStyle.OUTLINE -> 3.5.dp
+        TileFocusStyle.ZOOM -> 1.dp
+        TileFocusStyle.SHADOW -> 1.5.dp
+      }
+      else -> 1.dp
+    },
     label = "favBorderWidth",
   )
   val borderColor by animateColorAsState(
     targetValue = when {
       isReordering -> accent.primary
-      isFocused -> Color.White
+      isFocused -> when (focusStyle) {
+        TileFocusStyle.GLOW -> Color.White
+        TileFocusStyle.OUTLINE -> accent.primary
+        TileFocusStyle.ZOOM -> Color.White.copy(alpha = 0.28f)
+        TileFocusStyle.SHADOW -> Color.White.copy(alpha = 0.50f)
+      }
       else -> Color.White.copy(alpha = 0.18f)
     },
     label = "favBorderColor",
   )
   val cardAlpha by animateFloatAsState(
-    targetValue = if (isFocused || isReordering) 1f else tileOpacity.coerceIn(0.35f, 1f),
+    targetValue = if (activeFocus) 1f else tileOpacity.coerceIn(0.35f, 1f),
     label = "favAlpha",
   )
 
   Column(
     modifier = modifier
-      .width(tileSize.widthDp.dp)
+      .width(cardWidthDp.dp)
       .offset(y = liftOffset)
       .alpha(cardAlpha)
-      .zIndex(if (isFocused || isReordering) 2f else 0f),
+      .zIndex(if (activeFocus) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
     Surface(
       modifier = Modifier
         .fillMaxWidth()
-        .height(tileSize.heightDp.dp)
+        .height(cardHeightDp.dp)
         .scale(scale)
         .drawBehind {
-          if (isFocused || isReordering) {
-            val baseRadius = 16.dp.toPx()
+          if (activeFocus && focusStyle == TileFocusStyle.GLOW) {
+            val baseRadius = cornerRadius.toPx()
             for (i in 1..4) {
               val spread = (i * 3.dp.toPx())
               drawRoundRect(
@@ -173,8 +209,16 @@ fun FavoriteBannerCard(
           }
         }
         .shadow(
-          elevation = if (isFocused || isReordering) 14.dp else 6.dp,
-          shape = RoundedCornerShape(16.dp),
+          elevation = if (activeFocus) {
+            when (focusStyle) {
+              TileFocusStyle.SHADOW -> 24.dp
+              TileFocusStyle.ZOOM -> 18.dp
+              else -> 14.dp
+            }
+          } else {
+            6.dp
+          },
+          shape = cardShape,
           ambientColor = Color.Black,
           spotColor = Color.Black,
         )
@@ -233,12 +277,13 @@ fun FavoriteBannerCard(
             if (!isReordering) onOpenMenu()
           },
         ),
-      shape = RoundedCornerShape(16.dp),
+      shape = cardShape,
       color = cardSurface,
       border = BorderStroke(borderWidth, borderColor),
     ) {
       Box(modifier = Modifier.fillMaxSize()) {
-        if (app.banner != null) {
+        val useBannerFill = app.banner != null && (tileShape != TileAspectShape.SQUARE_1_1 || app.hasCustomIcon)
+        if (useBannerFill && app.banner != null) {
           Image(
             bitmap = app.banner,
             contentDescription = app.label,
@@ -273,7 +318,7 @@ fun FavoriteBannerCard(
               ),
             contentAlignment = Alignment.Center,
           ) {
-            AppIconBadge(app = app, sizeDp = tileSize.iconSizeDp)
+            AppIconBadge(app = app, sizeDp = cardIconDp)
           }
         }
 
@@ -558,8 +603,15 @@ fun AddFavoriteTile(
   cardFocusRequester: FocusRequester = remember { FocusRequester() },
   upFocusRequester: FocusRequester? = null,
   downFocusRequester: FocusRequester? = null,
+  tileShape: TileAspectShape = TileAspectShape.BANNER_16_9,
+  cornerStyle: TileCornerStyle = TileCornerStyle.ROUNDED,
+  focusStyle: TileFocusStyle = TileFocusStyle.GLOW,
 ) {
   var isFocused by remember { mutableStateOf(false) }
+  val (shapeW, shapeH, _) = remember(tileSize, tileShape) { tileShape.dimensionsFor(tileSize) }
+  val addWidthDp = if (tileShape == TileAspectShape.BANNER_16_9) tileSize.addTileWidthDp else shapeW
+  val cornerRadius = cornerStyle.radiusDp.dp
+  val cardShape = RoundedCornerShape(cornerRadius)
 
   val scale by animateFloatAsState(
     targetValue = if (isFocused) 1.08f else 1f,
@@ -572,7 +624,11 @@ fun AddFavoriteTile(
     label = "addTileLift",
   )
   val borderColor by animateColorAsState(
-    targetValue = if (isFocused) Color.White else Color.White.copy(alpha = 0.22f),
+    targetValue = if (isFocused) {
+      if (focusStyle == TileFocusStyle.OUTLINE) accent.primary else Color.White
+    } else {
+      Color.White.copy(alpha = 0.22f)
+    },
     label = "addTileBorder",
   )
   val cardAlpha by animateFloatAsState(
@@ -582,7 +638,7 @@ fun AddFavoriteTile(
 
   Column(
     modifier = modifier
-      .width(tileSize.addTileWidthDp.dp)
+      .width(addWidthDp.dp)
       .offset(y = liftOffset)
       .alpha(cardAlpha)
       .zIndex(if (isFocused) 2f else 0f),
@@ -591,11 +647,11 @@ fun AddFavoriteTile(
     Surface(
       modifier = Modifier
         .fillMaxWidth()
-        .height(tileSize.heightDp.dp)
+        .height(shapeH.dp)
         .scale(scale)
         .drawBehind {
-          if (isFocused) {
-            val baseRadius = 16.dp.toPx()
+          if (isFocused && focusStyle == TileFocusStyle.GLOW) {
+            val baseRadius = cornerRadius.toPx()
             for (i in 1..4) {
               val spread = (i * 3.dp.toPx())
               drawRoundRect(
@@ -609,7 +665,7 @@ fun AddFavoriteTile(
         }
         .shadow(
           elevation = if (isFocused) 12.dp else 4.dp,
-          shape = RoundedCornerShape(16.dp),
+          shape = cardShape,
           ambientColor = Color.Black,
           spotColor = Color.Black,
         )
@@ -625,7 +681,7 @@ fun AddFavoriteTile(
           if (state.isFocused) onFocused()
         }
         .clickable(onClick = onClick),
-      shape = RoundedCornerShape(16.dp),
+      shape = cardShape,
       color = if (isFocused) accent.primary.copy(alpha = 0.28f) else cardSurface.copy(alpha = 0.56f),
       border = BorderStroke(if (isFocused) 3.dp else 1.5.dp, borderColor),
     ) {

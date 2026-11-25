@@ -3,8 +3,14 @@ package com.horizontv.launcher.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.horizontv.launcher.model.AppRow
+import com.horizontv.launcher.model.ClockFontStyle
+import com.horizontv.launcher.model.ClockFontWeight
+import com.horizontv.launcher.model.ClockStyle
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.HomeTileSpacing
+import com.horizontv.launcher.model.TileAspectShape
+import com.horizontv.launcher.model.TileCornerStyle
+import com.horizontv.launcher.model.TileFocusStyle
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JustWatchRegion
 import com.horizontv.launcher.model.LauncherSettings
@@ -43,6 +49,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       val obj = JSONObject()
       obj.put("id", row.id)
       obj.put("title", row.title)
+      obj.put("tileShape", row.tileShape)
       val pkgs = JSONArray()
       row.packageNames.forEach { pkgs.put(it) }
       obj.put("packages", pkgs)
@@ -61,9 +68,13 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("themeId", settings.themeId)
     root.put("accentId", settings.accentId)
     root.put("wallpaperDimAlpha", settings.wallpaperDimAlpha.toDouble())
+    root.put("wallpaperKenBurns", settings.wallpaperKenBurns)
     root.put("showClock", settings.showClock)
     root.put("showDate", settings.showDate)
     root.put("use24HourClock", settings.use24HourClock)
+    root.put("clockStyle", settings.clockStyle)
+    root.put("clockFontStyle", settings.clockFontStyle)
+    root.put("clockFontWeight", settings.clockFontWeight)
     root.put("showNonLeanbackApps", settings.showNonLeanbackApps)
     root.put("showSearchBar", settings.showSearchBar)
     root.put("showAllAppsSection", settings.showAllAppsSection)
@@ -74,6 +85,8 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("minimalistDockMode", settings.minimalistDockMode)
     root.put("tileOpacity", settings.tileOpacity.toDouble())
     root.put("tileSpacing", settings.tileSpacing)
+    root.put("tileCornerStyle", settings.tileCornerStyle)
+    root.put("tileFocusStyle", settings.tileFocusStyle)
     root.put("updateCheckSchedule", settings.updateCheckSchedule)
     root.put("parentalPin", settings.parentalPin)
     root.put("pinProtectSettings", settings.pinProtectSettings)
@@ -257,9 +270,13 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       wallpaperDimAlpha = root.optDouble("wallpaperDimAlpha", existing.wallpaperDimAlpha.toDouble())
         .toFloat()
         .coerceIn(0.20f, 0.85f),
+      wallpaperKenBurns = root.optBoolean("wallpaperKenBurns", existing.wallpaperKenBurns),
       showClock = root.optBoolean("showClock", existing.showClock),
       showDate = root.optBoolean("showDate", existing.showDate),
       use24HourClock = root.optBoolean("use24HourClock", existing.use24HourClock),
+      clockStyle = ClockStyle.fromId(root.optString("clockStyle", existing.clockStyle)).id,
+      clockFontStyle = ClockFontStyle.fromId(root.optString("clockFontStyle", existing.clockFontStyle)).id,
+      clockFontWeight = ClockFontWeight.fromId(root.optString("clockFontWeight", existing.clockFontWeight)).id,
       showNonLeanbackApps = root.optBoolean("showNonLeanbackApps", existing.showNonLeanbackApps),
       showSearchBar = root.optBoolean("showSearchBar", existing.showSearchBar),
       showAllAppsSection = root.optBoolean("showAllAppsSection", existing.showAllAppsSection),
@@ -271,6 +288,12 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       tileOpacity = root.optDouble("tileOpacity", existing.tileOpacity.toDouble()).toFloat().coerceIn(0.35f, 1.0f),
       tileSpacing = HomeTileSpacing.fromId(
         root.optString("tileSpacing", existing.tileSpacing),
+      ).id,
+      tileCornerStyle = TileCornerStyle.fromId(
+        root.optString("tileCornerStyle", existing.tileCornerStyle),
+      ).id,
+      tileFocusStyle = TileFocusStyle.fromId(
+        root.optString("tileFocusStyle", existing.tileFocusStyle),
       ).id,
       updateCheckSchedule = UpdateCheckSchedule.fromId(
         root.optString("updateCheckSchedule", existing.updateCheckSchedule),
@@ -475,7 +498,8 @@ object SettingsBackupCodec : SettingsBackupSerializer {
             }
           }
         }.distinct()
-        add(AppRow(id = id, title = title, packageNames = pkgs))
+        val shape = TileAspectShape.fromId(obj.optString("tileShape", TileAspectShape.BANNER_16_9.id)).id
+        add(AppRow(id = id, title = title, packageNames = pkgs, tileShape = shape))
       }
     }
   }
@@ -500,6 +524,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       accentId = prefs.getString(KEY_ACCENT_ID, "sky_cyan") ?: "sky_cyan",
       customWallpaperUri = prefs.getString(KEY_CUSTOM_WALLPAPER, null),
       wallpaperDimAlpha = prefs.getFloat(KEY_WALLPAPER_DIM, 0.45f).coerceIn(0.20f, 0.85f),
+      wallpaperKenBurns = prefs.getBoolean(KEY_WALLPAPER_KEN_BURNS, false),
       wallpaperProvider = MediaWallpaperProvider.fromId(
         prefs.getString(KEY_WALLPAPER_PROVIDER, MediaWallpaperProvider.JELLYFIN.id),
       ).id,
@@ -547,6 +572,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
       showClock = prefs.getBoolean(KEY_SHOW_CLOCK, true),
       showDate = prefs.getBoolean(KEY_SHOW_DATE, true),
       use24HourClock = prefs.getBoolean(KEY_USE_24H, false),
+      clockStyle = ClockStyle.fromId(prefs.getString(KEY_CLOCK_STYLE, ClockStyle.CLASSIC.id)).id,
+      clockFontStyle = ClockFontStyle.fromId(prefs.getString(KEY_CLOCK_FONT_STYLE, ClockFontStyle.SANS.id)).id,
+      clockFontWeight = ClockFontWeight.fromId(prefs.getString(KEY_CLOCK_FONT_WEIGHT, ClockFontWeight.LIGHT.id)).id,
       showNonLeanbackApps = prefs.getBoolean(KEY_SHOW_NON_LEANBACK, true),
       showSearchBar = prefs.getBoolean(KEY_SHOW_SEARCH_BAR, true),
       showAllAppsSection = prefs.getBoolean(KEY_SHOW_ALL_APPS, true),
@@ -558,6 +586,12 @@ class LauncherPreferences(context: Context) : SettingsStore {
       tileOpacity = prefs.getFloat(KEY_TILE_OPACITY, 1.0f).coerceIn(0.35f, 1.0f),
       tileSpacing = HomeTileSpacing.fromId(
         prefs.getString(KEY_TILE_SPACING, HomeTileSpacing.NORMAL.id),
+      ).id,
+      tileCornerStyle = TileCornerStyle.fromId(
+        prefs.getString(KEY_TILE_CORNER_STYLE, TileCornerStyle.ROUNDED.id),
+      ).id,
+      tileFocusStyle = TileFocusStyle.fromId(
+        prefs.getString(KEY_TILE_FOCUS_STYLE, TileFocusStyle.GLOW.id),
       ).id,
       homeTileSize = HomeTileSize.fromId(
         prefs.getString(KEY_HOME_TILE_SIZE, HomeTileSize.MEDIUM.id),
@@ -620,6 +654,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putString(KEY_ACCENT_ID, settings.accentId)
       .putString(KEY_CUSTOM_WALLPAPER, settings.customWallpaperUri)
       .putFloat(KEY_WALLPAPER_DIM, settings.wallpaperDimAlpha)
+      .putBoolean(KEY_WALLPAPER_KEN_BURNS, settings.wallpaperKenBurns)
       .putString(KEY_WALLPAPER_PROVIDER, settings.wallpaperProvider)
       .putBoolean(KEY_JELLYFIN_ENABLED, settings.jellyfinEnabled)
       .putString(KEY_JELLYFIN_URL, settings.jellyfinServerUrl)
@@ -658,6 +693,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putBoolean(KEY_SHOW_CLOCK, settings.showClock)
       .putBoolean(KEY_SHOW_DATE, settings.showDate)
       .putBoolean(KEY_USE_24H, settings.use24HourClock)
+      .putString(KEY_CLOCK_STYLE, settings.clockStyle)
+      .putString(KEY_CLOCK_FONT_STYLE, settings.clockFontStyle)
+      .putString(KEY_CLOCK_FONT_WEIGHT, settings.clockFontWeight)
       .putBoolean(KEY_SHOW_NON_LEANBACK, settings.showNonLeanbackApps)
       .putBoolean(KEY_SHOW_SEARCH_BAR, settings.showSearchBar)
       .putBoolean(KEY_SHOW_ALL_APPS, settings.showAllAppsSection)
@@ -668,6 +706,8 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putBoolean(KEY_MINIMALIST_DOCK, settings.minimalistDockMode)
       .putFloat(KEY_TILE_OPACITY, settings.tileOpacity.coerceIn(0.35f, 1.0f))
       .putString(KEY_TILE_SPACING, settings.tileSpacing)
+      .putString(KEY_TILE_CORNER_STYLE, settings.tileCornerStyle)
+      .putString(KEY_TILE_FOCUS_STYLE, settings.tileFocusStyle)
       .putString(KEY_HOME_TILE_SIZE, settings.homeTileSize)
       .putStringSet(KEY_DISABLED_SEARCH_PROVIDERS, settings.disabledSearchProviders)
       .putBoolean(KEY_JW_FILTER_SERVICES, settings.justWatchFilterServices)
@@ -744,6 +784,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       val obj = JSONObject()
       obj.put("id", row.id)
       obj.put("title", row.title)
+      obj.put("tileShape", row.tileShape)
       val pkgs = JSONArray()
       row.packageNames.forEach { pkgs.put(it) }
       obj.put("packages", pkgs)
@@ -828,6 +869,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_ACCENT_ID = "accent_id"
     private const val KEY_CUSTOM_WALLPAPER = "custom_wallpaper_uri"
     private const val KEY_WALLPAPER_DIM = "wallpaper_dim_alpha"
+    private const val KEY_WALLPAPER_KEN_BURNS = "wallpaper_ken_burns"
     private const val KEY_WALLPAPER_PROVIDER = "wallpaper_provider"
     private const val KEY_JELLYFIN_ENABLED = "jellyfin_enabled"
     private const val KEY_JELLYFIN_URL = "jellyfin_server_url"
@@ -866,6 +908,9 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_SHOW_CLOCK = "show_clock"
     private const val KEY_SHOW_DATE = "show_date"
     private const val KEY_USE_24H = "use_24h_clock"
+    private const val KEY_CLOCK_STYLE = "clock_style"
+    private const val KEY_CLOCK_FONT_STYLE = "clock_font_style"
+    private const val KEY_CLOCK_FONT_WEIGHT = "clock_font_weight"
     private const val KEY_SHOW_NON_LEANBACK = "show_non_leanback"
     private const val KEY_SHOW_SEARCH_BAR = "show_search_bar"
     private const val KEY_SHOW_ALL_APPS = "show_all_apps_section"
@@ -876,6 +921,8 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_MINIMALIST_DOCK = "minimalist_dock_mode"
     private const val KEY_TILE_OPACITY = "tile_opacity"
     private const val KEY_TILE_SPACING = "tile_spacing"
+    private const val KEY_TILE_CORNER_STYLE = "tile_corner_style"
+    private const val KEY_TILE_FOCUS_STYLE = "tile_focus_style"
     private const val KEY_HOME_TILE_SIZE = "home_tile_size"
     private const val KEY_DISABLED_SEARCH_PROVIDERS = "disabled_search_providers"
     private const val KEY_JW_FILTER_SERVICES = "justwatch_filter_services"

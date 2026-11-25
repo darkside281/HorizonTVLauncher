@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,18 +46,28 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.horizontv.launcher.model.AccentPreset
+import com.horizontv.launcher.model.ClockFontStyle
+import com.horizontv.launcher.model.ClockFontWeight
+import com.horizontv.launcher.model.ClockStyle
 import com.horizontv.launcher.model.WeatherData
 import com.horizontv.launcher.model.WeatherForecastSize
 import com.horizontv.launcher.model.WeatherIconStyle
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlinx.coroutines.delay
 
 @Composable
@@ -65,6 +76,9 @@ fun LauncherTopBar(
   showClock: Boolean,
   showDate: Boolean,
   use24HourClock: Boolean,
+  clockStyle: ClockStyle = ClockStyle.CLASSIC,
+  clockFontStyle: ClockFontStyle = ClockFontStyle.SANS,
+  clockFontWeight: ClockFontWeight = ClockFontWeight.LIGHT,
   showSearchButton: Boolean,
   isSearchActive: Boolean,
   showTvInputsButton: Boolean = false,
@@ -107,6 +121,21 @@ fun LauncherTopBar(
     SimpleDateFormat("EEEE d MMMM", Locale.getDefault()).format(now)
   }
 
+  val fontFamily = remember(clockFontStyle) {
+    when (clockFontStyle) {
+      ClockFontStyle.SANS -> FontFamily.SansSerif
+      ClockFontStyle.SERIF -> FontFamily.Serif
+      ClockFontStyle.MONO -> FontFamily.Monospace
+    }
+  }
+  val fontWeight = remember(clockFontWeight) {
+    when (clockFontWeight) {
+      ClockFontWeight.LIGHT -> FontWeight.Light
+      ClockFontWeight.REGULAR -> FontWeight.Normal
+      ClockFontWeight.BOLD -> FontWeight.Bold
+    }
+  }
+
   val heroShadow = remember {
     Shadow(
       color = Color.Black.copy(alpha = 0.55f),
@@ -115,77 +144,7 @@ fun LauncherTopBar(
     )
   }
 
-  Row(
-    modifier = modifier.fillMaxWidth(),
-    verticalAlignment = Alignment.Top,
-    horizontalArrangement = Arrangement.SpaceBetween,
-  ) {
-    // Left: Minimal Projectivy-style airy large hero clock, date & weather
-    Column(
-      modifier = Modifier.weight(1f, fill = false),
-    ) {
-      if (showClock) {
-        Row(verticalAlignment = Alignment.Bottom) {
-          Text(
-            text = timeText,
-            style = MaterialTheme.typography.displayLarge.copy(
-              fontSize = 58.sp,
-              lineHeight = 62.sp,
-              fontWeight = FontWeight.Light,
-              letterSpacing = (-1.5).sp,
-              fontFeatureSettings = "tnum",
-              shadow = heroShadow,
-            ),
-            color = Color.White,
-            maxLines = 1,
-          )
-          if (amPmText.isNotEmpty()) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-              text = amPmText,
-              style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight = FontWeight.Normal,
-                shadow = heroShadow,
-              ),
-              color = Color.White.copy(alpha = 0.78f),
-              modifier = Modifier.padding(bottom = 10.dp),
-              maxLines = 1,
-            )
-          }
-        }
-      }
-
-      if (showDate) {
-        if (showClock) Spacer(modifier = Modifier.height(2.dp))
-        Text(
-          text = dateText,
-          style = MaterialTheme.typography.titleMedium.copy(
-            fontWeight = FontWeight.Normal,
-            letterSpacing = 0.3.sp,
-            shadow = heroShadow,
-          ),
-          color = Color.White.copy(alpha = 0.86f),
-          maxLines = 1,
-        )
-      }
-
-      if (weatherEnabled && weatherData != null) {
-        if (showClock || showDate) Spacer(modifier = Modifier.height(10.dp))
-        WeatherWidget(
-          weather = weatherData,
-          daysToShow = weatherDays,
-          showForecastDays = weatherShowForecast,
-          forecastSize = weatherForecastSize,
-          iconStyle = weatherIconStyle,
-          showBackdrop = weatherShowBackdrop,
-          accent = accent,
-        )
-      }
-    }
-
-    Spacer(modifier = Modifier.width(20.dp))
-
-    // Top-Right: Compact translucent dark-glass quick controls
+  val controlsRow: @Composable () -> Unit = {
     Row(
       modifier = Modifier.padding(top = 6.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -252,6 +211,357 @@ fun LauncherTopBar(
       )
     }
   }
+
+  if (clockStyle == ClockStyle.CENTERED) {
+    Box(modifier = modifier.fillMaxWidth()) {
+      // Top-right quick controls stay pinned cleanly
+      Box(modifier = Modifier.align(Alignment.TopEnd)) {
+        controlsRow()
+      }
+      // Large centered editorial cinema clock, date & weather
+      Column(
+        modifier = Modifier
+          .align(Alignment.TopCenter)
+          .padding(top = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        if (showClock) {
+          Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+              text = timeText,
+              style = MaterialTheme.typography.displayLarge.copy(
+                fontSize = 74.sp,
+                lineHeight = 78.sp,
+                fontFamily = fontFamily,
+                fontWeight = fontWeight,
+                letterSpacing = (-1.5).sp,
+                fontFeatureSettings = "tnum",
+                shadow = heroShadow,
+              ),
+              color = Color.White,
+              maxLines = 1,
+            )
+            if (amPmText.isNotEmpty()) {
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = amPmText,
+                style = MaterialTheme.typography.titleLarge.copy(
+                  fontFamily = fontFamily,
+                  fontWeight = FontWeight.Normal,
+                  shadow = heroShadow,
+                ),
+                color = Color.White.copy(alpha = 0.78f),
+                modifier = Modifier.padding(bottom = 13.dp),
+                maxLines = 1,
+              )
+            }
+          }
+        }
+        if (showDate) {
+          if (showClock) Spacer(modifier = Modifier.height(2.dp))
+          Text(
+            text = dateText,
+            style = MaterialTheme.typography.titleMedium.copy(
+              fontFamily = fontFamily,
+              fontWeight = FontWeight.Normal,
+              letterSpacing = 0.4.sp,
+              shadow = heroShadow,
+            ),
+            color = Color.White.copy(alpha = 0.88f),
+            maxLines = 1,
+          )
+        }
+        if (weatherEnabled && weatherData != null) {
+          if (showClock || showDate) Spacer(modifier = Modifier.height(10.dp))
+          WeatherWidget(
+            weather = weatherData,
+            daysToShow = weatherDays,
+            showForecastDays = weatherShowForecast,
+            forecastSize = weatherForecastSize,
+            iconStyle = weatherIconStyle,
+            showBackdrop = weatherShowBackdrop,
+            accent = accent,
+          )
+        }
+      }
+    }
+    return
+  }
+
+  Row(
+    modifier = modifier.fillMaxWidth(),
+    verticalAlignment = Alignment.Top,
+    horizontalArrangement = Arrangement.SpaceBetween,
+  ) {
+    Column(
+      modifier = Modifier.weight(1f, fill = false),
+    ) {
+      when (clockStyle) {
+        ClockStyle.MINIMAL -> {
+          if (showClock || showDate) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              if (showClock) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                  Text(
+                    text = timeText,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                      fontSize = 30.sp,
+                      lineHeight = 34.sp,
+                      fontFamily = fontFamily,
+                      fontWeight = fontWeight,
+                      fontFeatureSettings = "tnum",
+                      shadow = heroShadow,
+                    ),
+                    color = Color.White,
+                    maxLines = 1,
+                  )
+                  if (amPmText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                      text = amPmText,
+                      style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = fontFamily,
+                        shadow = heroShadow,
+                      ),
+                      color = Color.White.copy(alpha = 0.78f),
+                      modifier = Modifier.padding(bottom = 4.dp),
+                      maxLines = 1,
+                    )
+                  }
+                }
+              }
+              if (showClock && showDate) {
+                Text(
+                  text = "•",
+                  style = MaterialTheme.typography.titleMedium.copy(shadow = heroShadow),
+                  color = accent.primary.copy(alpha = 0.90f),
+                )
+              }
+              if (showDate) {
+                Text(
+                  text = dateText,
+                  style = MaterialTheme.typography.titleMedium.copy(
+                    fontFamily = fontFamily,
+                    fontWeight = FontWeight.Normal,
+                    shadow = heroShadow,
+                  ),
+                  color = Color.White.copy(alpha = 0.86f),
+                  maxLines = 1,
+                )
+              }
+            }
+          }
+        }
+
+        ClockStyle.ANALOG -> {
+          if (showClock || showDate) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+              if (showClock) {
+                AnalogClockDial(
+                  timeMillis = currentTimeMillis,
+                  accent = accent,
+                  modifier = Modifier.size(86.dp),
+                )
+              }
+              Column {
+                if (showClock) {
+                  Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                      text = timeText,
+                      style = MaterialTheme.typography.headlineMedium.copy(
+                        fontSize = 26.sp,
+                        fontFamily = fontFamily,
+                        fontWeight = fontWeight,
+                        fontFeatureSettings = "tnum",
+                        shadow = heroShadow,
+                      ),
+                      color = Color.White,
+                      maxLines = 1,
+                    )
+                    if (amPmText.isNotEmpty()) {
+                      Spacer(modifier = Modifier.width(5.dp))
+                      Text(
+                        text = amPmText,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                          fontFamily = fontFamily,
+                          shadow = heroShadow,
+                        ),
+                        color = Color.White.copy(alpha = 0.75f),
+                        modifier = Modifier.padding(bottom = 3.dp),
+                      )
+                    }
+                  }
+                }
+                if (showDate) {
+                  Text(
+                    text = dateText,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                      fontFamily = fontFamily,
+                      fontWeight = FontWeight.Normal,
+                      shadow = heroShadow,
+                    ),
+                    color = Color.White.copy(alpha = 0.86f),
+                    maxLines = 1,
+                  )
+                }
+              }
+            }
+          }
+        }
+
+        else -> {
+          // CLASSIC
+          if (showClock) {
+            Row(verticalAlignment = Alignment.Bottom) {
+              Text(
+                text = timeText,
+                style = MaterialTheme.typography.displayLarge.copy(
+                  fontSize = 58.sp,
+                  lineHeight = 62.sp,
+                  fontFamily = fontFamily,
+                  fontWeight = fontWeight,
+                  letterSpacing = (-1.5).sp,
+                  fontFeatureSettings = "tnum",
+                  shadow = heroShadow,
+                ),
+                color = Color.White,
+                maxLines = 1,
+              )
+              if (amPmText.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = amPmText,
+                  style = MaterialTheme.typography.titleLarge.copy(
+                    fontFamily = fontFamily,
+                    fontWeight = FontWeight.Normal,
+                    shadow = heroShadow,
+                  ),
+                  color = Color.White.copy(alpha = 0.78f),
+                  modifier = Modifier.padding(bottom = 10.dp),
+                  maxLines = 1,
+                )
+              }
+            }
+          }
+          if (showDate) {
+            if (showClock) Spacer(modifier = Modifier.height(2.dp))
+            Text(
+              text = dateText,
+              style = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = fontFamily,
+                fontWeight = FontWeight.Normal,
+                letterSpacing = 0.3.sp,
+                shadow = heroShadow,
+              ),
+              color = Color.White.copy(alpha = 0.86f),
+              maxLines = 1,
+            )
+          }
+        }
+      }
+
+      if (weatherEnabled && weatherData != null) {
+        if (showClock || showDate) Spacer(modifier = Modifier.height(10.dp))
+        WeatherWidget(
+          weather = weatherData,
+          daysToShow = weatherDays,
+          showForecastDays = weatherShowForecast,
+          forecastSize = weatherForecastSize,
+          iconStyle = weatherIconStyle,
+          showBackdrop = weatherShowBackdrop,
+          accent = accent,
+        )
+      }
+    }
+
+    Spacer(modifier = Modifier.width(20.dp))
+    controlsRow()
+  }
+}
+
+@Composable
+private fun AnalogClockDial(
+  timeMillis: Long,
+  accent: AccentPreset,
+  modifier: Modifier = Modifier,
+) {
+  val cal = remember(timeMillis) {
+    Calendar.getInstance().apply { this.timeInMillis = timeMillis }
+  }
+  val hours = cal.get(Calendar.HOUR)
+  val minutes = cal.get(Calendar.MINUTE)
+  val hourAngle = ((hours + minutes / 60f) / 12f) * 2f * PI.toFloat() - (PI.toFloat() / 2f)
+  val minuteAngle = (minutes / 60f) * 2f * PI.toFloat() - (PI.toFloat() / 2f)
+
+  Canvas(modifier = modifier) {
+    val radius = size.minDimension / 2f
+    val center = Offset(size.width / 2f, size.height / 2f)
+
+    // Translucent dial face
+    drawCircle(
+      color = Color.Black.copy(alpha = 0.38f),
+      radius = radius,
+      center = center,
+    )
+    drawCircle(
+      color = Color.White.copy(alpha = 0.28f),
+      radius = radius - 1.5.dp.toPx(),
+      center = center,
+      style = Stroke(width = 1.8.dp.toPx()),
+    )
+
+    // 12 hour markers
+    for (i in 0 until 12) {
+      val a = (i / 12f) * 2f * PI.toFloat() - (PI.toFloat() / 2f)
+      val isMajor = i % 3 == 0
+      val inner = radius * (if (isMajor) 0.75f else 0.83f)
+      val outer = radius * 0.90f
+      drawLine(
+        color = Color.White.copy(alpha = if (isMajor) 0.88f else 0.42f),
+        start = Offset(center.x + cos(a) * inner, center.y + sin(a) * inner),
+        end = Offset(center.x + cos(a) * outer, center.y + sin(a) * outer),
+        strokeWidth = (if (isMajor) 2.2.dp else 1.2.dp).toPx(),
+        cap = StrokeCap.Round,
+      )
+    }
+
+    // Hour hand
+    drawLine(
+      color = Color.White,
+      start = center,
+      end = Offset(
+        center.x + cos(hourAngle) * (radius * 0.48f),
+        center.y + sin(hourAngle) * (radius * 0.48f),
+      ),
+      strokeWidth = 3.2.dp.toPx(),
+      cap = StrokeCap.Round,
+    )
+
+    // Minute hand
+    drawLine(
+      color = Color.White.copy(alpha = 0.92f),
+      start = center,
+      end = Offset(
+        center.x + cos(minuteAngle) * (radius * 0.68f),
+        center.y + sin(minuteAngle) * (radius * 0.68f),
+      ),
+      strokeWidth = 2.2.dp.toPx(),
+      cap = StrokeCap.Round,
+    )
+
+    // Accent center hub
+    drawCircle(
+      color = accent.primary,
+      radius = 3.5.dp.toPx(),
+      center = center,
+    )
+  }
 }
 
 @Composable
@@ -300,9 +610,9 @@ fun QuickActionPill(
     },
   ) {
     Row(
-      modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+      modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(7.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       Icon(
         imageVector = icon,
@@ -312,9 +622,10 @@ fun QuickActionPill(
       )
       Text(
         text = label,
-        style = MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
         color = contentColor,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
       )
     }
   }
@@ -339,11 +650,10 @@ fun QuickActionIcon(
     targetValue = if (isFocused) accent.primary else Color.Black.copy(alpha = 0.34f),
     label = "iconBg",
   )
-  val tint = if (isFocused) accent.onPrimary else Color.White
 
   Surface(
     modifier = modifier
-      .size(40.dp)
+      .size(42.dp)
       .scale(scale)
       .clip(CircleShape)
       .onFocusChanged {
@@ -363,7 +673,7 @@ fun QuickActionIcon(
       Icon(
         imageVector = icon,
         contentDescription = contentDescription,
-        tint = tint,
+        tint = if (isFocused) accent.onPrimary else Color.White,
         modifier = Modifier.size(20.dp),
       )
     }

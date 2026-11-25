@@ -27,9 +27,15 @@ import com.horizontv.launcher.model.AppFilter
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.AppMenuTarget
 import com.horizontv.launcher.model.AppRow
+import com.horizontv.launcher.model.ClockFontStyle
+import com.horizontv.launcher.model.ClockFontWeight
+import com.horizontv.launcher.model.ClockStyle
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.HomeTileSpacing
+import com.horizontv.launcher.model.TileAspectShape
+import com.horizontv.launcher.model.TileCornerStyle
+import com.horizontv.launcher.model.TileFocusStyle
 import com.horizontv.launcher.model.JellyfinBackdrop
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
@@ -1773,6 +1779,12 @@ class LauncherViewModel(
     updateSettings { it.copy(wallpaperDimAlpha = alpha.coerceIn(0.20f, 0.85f)) }
   }
 
+  fun toggleWallpaperKenBurns() {
+    val next = !_uiState.value.settings.wallpaperKenBurns
+    updateSettings { it.copy(wallpaperKenBurns = next) }
+    showStatus(if (next) "Wallpaper Ken Burns motion enabled" else "Wallpaper Ken Burns motion off")
+  }
+
   fun toggle24HourClock() {
     updateSettings { it.copy(use24HourClock = !it.use24HourClock) }
   }
@@ -2102,6 +2114,49 @@ class LauncherViewModel(
   fun setTileSpacing(spacingId: String) {
     val resolved = HomeTileSpacing.fromId(spacingId)
     updateSettings { it.copy(tileSpacing = resolved.id) }
+  }
+
+  fun setTileCornerStyle(styleId: String) {
+    val resolved = TileCornerStyle.fromId(styleId)
+    updateSettings { it.copy(tileCornerStyle = resolved.id) }
+  }
+
+  fun setTileFocusStyle(styleId: String) {
+    val resolved = TileFocusStyle.fromId(styleId)
+    updateSettings { it.copy(tileFocusStyle = resolved.id) }
+  }
+
+  fun setClockStyle(styleId: String) {
+    val resolved = ClockStyle.fromId(styleId)
+    updateSettings { it.copy(clockStyle = resolved.id) }
+  }
+
+  fun setClockFontStyle(styleId: String) {
+    val resolved = ClockFontStyle.fromId(styleId)
+    updateSettings { it.copy(clockFontStyle = resolved.id) }
+  }
+
+  fun setClockFontWeight(weightId: String) {
+    val resolved = ClockFontWeight.fromId(weightId)
+    updateSettings { it.copy(clockFontWeight = resolved.id) }
+  }
+
+  fun cycleRowTileShape(rowId: String) {
+    val row = _uiState.value.settings.rows.firstOrNull { it.id == rowId } ?: return
+    val next = TileAspectShape.fromId(row.tileShape).next()
+    setRowTileShape(rowId, next.id)
+    showStatus("${row.title} shape: ${next.label}")
+  }
+
+  fun setRowTileShape(rowId: String, shapeId: String) {
+    val resolved = TileAspectShape.fromId(shapeId)
+    updateSettings { s ->
+      s.copy(
+        rows = s.rows.map { r ->
+          if (r.id == rowId) r.copy(tileShape = resolved.id) else r
+        },
+      )
+    }
   }
 
   fun toggleShowNonLeanbackApps() {
