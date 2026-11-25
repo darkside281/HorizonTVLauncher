@@ -1905,22 +1905,68 @@ class LauncherViewModel(
           startJellyfinSlideshow(fetchFreshList = true)
         }
       }
-      override fun updateHomeOptions(
-        minimalistDock: Boolean?,
-        use24HourClock: Boolean?,
-        showTileTitles: Boolean?,
-        tileOpacity: Float?,
-        tileSpacing: String?,
-        regionCode: String?,
-      ) {
+      override fun updateHomeJson(json: org.json.JSONObject) {
         updateSettings { s ->
           s.copy(
-            minimalistDockMode = minimalistDock ?: s.minimalistDockMode,
-            use24HourClock = use24HourClock ?: s.use24HourClock,
-            showTileTitles = showTileTitles ?: s.showTileTitles,
-            tileOpacity = tileOpacity?.coerceIn(0.35f, 1.0f) ?: s.tileOpacity,
-            tileSpacing = tileSpacing ?: s.tileSpacing,
-            justWatchRegion = regionCode ?: s.justWatchRegion,
+            minimalistDockMode = if (json.has("minimalistDockMode")) json.optBoolean("minimalistDockMode") else s.minimalistDockMode,
+            lockHomeLayout = if (json.has("lockHomeLayout")) json.optBoolean("lockHomeLayout") else s.lockHomeLayout,
+            showTileTitles = if (json.has("showTileTitles")) json.optBoolean("showTileTitles") else s.showTileTitles,
+            showAddAppTile = if (json.has("showAddAppTile")) json.optBoolean("showAddAppTile") else s.showAddAppTile,
+            homeTileSize = if (json.has("homeTileSize")) HomeTileSize.fromId(json.optString("homeTileSize")).id else s.homeTileSize,
+            tileCornerStyle = if (json.has("tileCornerStyle")) TileCornerStyle.fromId(json.optString("tileCornerStyle")).id else s.tileCornerStyle,
+            tileFocusStyle = if (json.has("tileFocusStyle")) TileFocusStyle.fromId(json.optString("tileFocusStyle")).id else s.tileFocusStyle,
+            tileOpacity = if (json.has("tileOpacity")) json.optDouble("tileOpacity", 1.0).toFloat().coerceIn(0.35f, 1.0f) else s.tileOpacity,
+            tileSpacing = if (json.has("tileSpacing")) HomeTileSpacing.fromId(json.optString("tileSpacing")).id else s.tileSpacing,
+            showClock = if (json.has("showClock")) json.optBoolean("showClock") else s.showClock,
+            use24HourClock = if (json.has("use24HourClock")) json.optBoolean("use24HourClock") else s.use24HourClock,
+            showDate = if (json.has("showDate")) json.optBoolean("showDate") else s.showDate,
+            showTvInputsButton = if (json.has("showTvInputsButton")) json.optBoolean("showTvInputsButton") else s.showTvInputsButton,
+            clockStyle = if (json.has("clockStyle")) ClockStyle.fromId(json.optString("clockStyle")).id else s.clockStyle,
+            clockFontStyle = if (json.has("clockFontStyle")) ClockFontStyle.fromId(json.optString("clockFontStyle")).id else s.clockFontStyle,
+            clockFontWeight = if (json.has("clockFontWeight")) ClockFontWeight.fromId(json.optString("clockFontWeight")).id else s.clockFontWeight,
+            gridColumns = if (json.has("gridColumns")) json.optInt("gridColumns", s.gridColumns).coerceIn(4, 6) else s.gridColumns,
+            showAllAppsSection = if (json.has("showAllAppsSection")) json.optBoolean("showAllAppsSection") else s.showAllAppsSection,
+            showNonLeanbackApps = if (json.has("showNonLeanbackApps")) json.optBoolean("showNonLeanbackApps") else s.showNonLeanbackApps,
+          )
+        }
+      }
+      override fun updateSearchJson(json: org.json.JSONObject) {
+        updateSettings { s ->
+          val nextDisabled = s.disabledSearchProviders.toMutableSet()
+          fun applyProv(key: String, provId: String) {
+            if (json.has(key)) {
+              if (json.optBoolean(key)) nextDisabled.remove(provId) else nextDisabled.add(provId)
+            }
+          }
+          applyProv("searchProviderApps", LauncherSettings.SEARCH_PROVIDER_APPS)
+          applyProv("searchProviderJellyfin", LauncherSettings.SEARCH_PROVIDER_JELLYFIN)
+          applyProv("searchProviderJustWatch", LauncherSettings.SEARCH_PROVIDER_JUSTWATCH)
+          applyProv("searchProviderYouTube", LauncherSettings.SEARCH_PROVIDER_YOUTUBE)
+          applyProv("searchProviderWeb", LauncherSettings.SEARCH_PROVIDER_WEB)
+          val nextServices = if (json.has("justWatchServices")) {
+            val arr = json.optJSONArray("justWatchServices")
+            buildSet {
+              if (arr != null) {
+                for (i in 0 until arr.length()) {
+                  val id = arr.optString(i, "").trim()
+                  if (id.isNotEmpty()) add(id)
+                }
+              }
+            }
+          } else {
+            s.justWatchServices
+          }
+          s.copy(
+            showSearchBar = if (json.has("showSearchBar")) json.optBoolean("showSearchBar") else s.showSearchBar,
+            searchOpenDetailsPopup = if (json.has("searchOpenDetailsPopup")) json.optBoolean("searchOpenDetailsPopup") else s.searchOpenDetailsPopup,
+            justWatchRegion = if (json.has("justWatchRegion")) JustWatchRegion.fromCode(json.optString("justWatchRegion")).code else s.justWatchRegion,
+            justWatchShowRottenTomatoes = if (json.has("justWatchShowRottenTomatoes")) json.optBoolean("justWatchShowRottenTomatoes") else s.justWatchShowRottenTomatoes,
+            justWatchShowAgeRating = if (json.has("justWatchShowAgeRating")) json.optBoolean("justWatchShowAgeRating") else s.justWatchShowAgeRating,
+            justWatchFilterServices = if (json.has("justWatchFilterServices")) json.optBoolean("justWatchFilterServices") else s.justWatchFilterServices,
+            justWatchIncludeRentBuy = if (json.has("justWatchIncludeRentBuy")) json.optBoolean("justWatchIncludeRentBuy") else s.justWatchIncludeRentBuy,
+            justWatchHideUnmatchedTitles = if (json.has("justWatchHideUnmatchedTitles")) json.optBoolean("justWatchHideUnmatchedTitles") else s.justWatchHideUnmatchedTitles,
+            disabledSearchProviders = nextDisabled,
+            justWatchServices = nextServices,
           )
         }
       }
@@ -1928,6 +1974,8 @@ class LauncherViewModel(
       override fun createRow(title: String) = this@LauncherViewModel.createRow(title, openAppPickerAfter = false)
       override fun moveRow(rowId: String, delta: Int) = moveRowInternal(rowId, delta, bypassLayoutLock = true)
       override fun deleteRow(rowId: String) = deleteRowInternal(rowId, bypassLayoutLock = true)
+      override fun setRowTileShape(rowId: String, shapeId: String) =
+        this@LauncherViewModel.setRowTileShape(rowId, shapeId)
       override fun toggleAppInRow(rowId: String, packageName: String) =
         toggleAppInRowInternal(rowId, packageName, bypassLayoutLock = true)
       override fun moveAppInRow(rowId: String, packageName: String, delta: Int) =
@@ -1944,41 +1992,53 @@ class LauncherViewModel(
       }
       override fun sortRowAppsAlphabetically(rowId: String) =
         sortRowAppsAlphabeticallyInternal(rowId, bypassLayoutLock = true)
-      override fun updateWallpaperOptions(
-        themeId: String?,
-        accentId: String?,
-        providerId: String?,
-        slideshowEnabled: Boolean?,
-        dimAlpha: Float?,
-        intervalSeconds: Int?,
-        showTitle: Boolean?,
-        clearCustomWallpaper: Boolean,
-      ) {
-        if (clearCustomWallpaper) {
+      override fun updateWallpaperJson(json: org.json.JSONObject) {
+        if (json.optBoolean("clearCustomWallpaper", false)) {
           setCustomWallpaper(null)
           return
         }
-        if (themeId != null) {
-          selectTheme(themeId)
+        if (json.has("themeId")) {
+          selectTheme(json.optString("themeId"))
           return
         }
-        if (accentId != null) {
-          selectAccent(accentId)
+        if (json.has("accentId")) {
+          selectAccent(json.optString("accentId"))
         }
+        val providerId = if (json.has("wallpaperProvider")) json.optString("wallpaperProvider") else null
         val providerChanged = providerId != null && providerId != _uiState.value.settings.wallpaperProvider
         if (providerChanged) {
           selectWallpaperProvider(MediaWallpaperProvider.fromId(providerId))
         }
+        val slideshowEnabled = if (json.has("wallpaperSlideshowEnabled")) json.optBoolean("wallpaperSlideshowEnabled") else null
         updateSettings { s ->
           val activeProv = s.activeWallpaperProvider
           val withCfg = s.withProviderConfig(activeProv) { cfg ->
             cfg.copy(
-              intervalSeconds = intervalSeconds?.coerceIn(10, 600) ?: cfg.intervalSeconds,
-              showTitle = showTitle ?: cfg.showTitle,
+              intervalSeconds = if (json.has("wallpaperIntervalSeconds")) json.optInt("wallpaperIntervalSeconds", cfg.intervalSeconds).coerceIn(10, 600) else cfg.intervalSeconds,
+              showTitle = if (json.has("wallpaperShowTitle")) json.optBoolean("wallpaperShowTitle") else cfg.showTitle,
+              backdropLimit = if (json.has("wallpaperBackdropLimit")) json.optInt("wallpaperBackdropLimit", cfg.backdropLimit).coerceIn(10, 500) else cfg.backdropLimit,
+              mediaType = if (json.has("wallpaperMediaType")) JellyfinMediaType.fromId(json.optString("wallpaperMediaType")).id else cfg.mediaType,
             )
           }
+          val nextRedditSubs = if (json.has("redditSubreddits")) {
+            val arr = json.optJSONArray("redditSubreddits")
+            buildSet {
+              if (arr != null) for (i in 0 until arr.length()) arr.optString(i, "").trim().takeIf { it.isNotEmpty() }?.let(::add)
+            }.ifEmpty { s.redditSubreddits }
+          } else s.redditSubreddits
+          val nextTmdbCats = if (json.has("tmdbCategories")) {
+            val arr = json.optJSONArray("tmdbCategories")
+            buildSet {
+              if (arr != null) for (i in 0 until arr.length()) arr.optString(i, "").trim().takeIf { it.isNotEmpty() }?.let(::add)
+            }.ifEmpty { s.tmdbCategories }
+          } else s.tmdbCategories
+
           withCfg.copy(
-            wallpaperDimAlpha = dimAlpha?.coerceIn(0.20f, 0.85f) ?: withCfg.wallpaperDimAlpha,
+            wallpaperDimAlpha = if (json.has("wallpaperDimAlpha")) json.optDouble("wallpaperDimAlpha", 0.45).toFloat().coerceIn(0.20f, 0.85f) else withCfg.wallpaperDimAlpha,
+            wallpaperKenBurns = if (json.has("wallpaperKenBurns")) json.optBoolean("wallpaperKenBurns") else withCfg.wallpaperKenBurns,
+            redditSort = if (json.has("redditSort")) RedditSort.fromId(json.optString("redditSort")).id else withCfg.redditSort,
+            redditSubreddits = nextRedditSubs,
+            tmdbCategories = nextTmdbCats,
             jellyfinEnabled = if (!providerChanged && slideshowEnabled != null) {
               slideshowEnabled && withCfg.isActiveWallpaperProviderConfigured
             } else {
@@ -1993,32 +2053,21 @@ class LauncherViewModel(
           stopJellyfinSlideshow()
         }
       }
-      override fun updateScreensaverOptions(
-        enabled: Boolean?,
-        modeId: String?,
-        timeoutMinutes: Int?,
-        intervalSeconds: Int?,
-        dimAlpha: Float?,
-        kenBurns: Boolean?,
-        showClock: Boolean?,
-        showWeather: Boolean?,
-        showTitle: Boolean?,
-        burnInShift: Boolean?,
-        ambientCycle: Boolean?,
-      ) {
+      override fun nextWallpaperNow() = nextJellyfinBackdrop()
+      override fun updateScreensaverJson(json: org.json.JSONObject) {
         updateSettings { s ->
           s.copy(
-            screensaverEnabled = enabled ?: s.screensaverEnabled,
-            screensaverMode = modeId ?: s.screensaverMode,
-            screensaverTimeoutMinutes = timeoutMinutes?.coerceIn(1, 60) ?: s.screensaverTimeoutMinutes,
-            screensaverIntervalSeconds = intervalSeconds?.coerceIn(5, 120) ?: s.screensaverIntervalSeconds,
-            screensaverDimAlpha = dimAlpha?.coerceIn(0.0f, 0.75f) ?: s.screensaverDimAlpha,
-            screensaverKenBurns = kenBurns ?: s.screensaverKenBurns,
-            screensaverShowClock = showClock ?: s.screensaverShowClock,
-            screensaverShowWeather = showWeather ?: s.screensaverShowWeather,
-            screensaverShowTitle = showTitle ?: s.screensaverShowTitle,
-            screensaverBurnInShift = burnInShift ?: s.screensaverBurnInShift,
-            screensaverAmbientCycle = ambientCycle ?: s.screensaverAmbientCycle,
+            screensaverEnabled = if (json.has("screensaverEnabled")) json.optBoolean("screensaverEnabled") else s.screensaverEnabled,
+            screensaverMode = if (json.has("screensaverMode")) ScreensaverMode.fromId(json.optString("screensaverMode")).id else s.screensaverMode,
+            screensaverTimeoutMinutes = if (json.has("screensaverTimeoutMinutes")) json.optInt("screensaverTimeoutMinutes", 5).coerceIn(1, 60) else s.screensaverTimeoutMinutes,
+            screensaverIntervalSeconds = if (json.has("screensaverIntervalSeconds")) json.optInt("screensaverIntervalSeconds", 20).coerceIn(5, 120) else s.screensaverIntervalSeconds,
+            screensaverDimAlpha = if (json.has("screensaverDimAlpha")) json.optDouble("screensaverDimAlpha", 0.25).toFloat().coerceIn(0.0f, 0.75f) else s.screensaverDimAlpha,
+            screensaverKenBurns = if (json.has("screensaverKenBurns")) json.optBoolean("screensaverKenBurns") else s.screensaverKenBurns,
+            screensaverShowClock = if (json.has("screensaverShowClock")) json.optBoolean("screensaverShowClock") else s.screensaverShowClock,
+            screensaverShowWeather = if (json.has("screensaverShowWeather")) json.optBoolean("screensaverShowWeather") else s.screensaverShowWeather,
+            screensaverShowTitle = if (json.has("screensaverShowTitle")) json.optBoolean("screensaverShowTitle") else s.screensaverShowTitle,
+            screensaverBurnInShift = if (json.has("screensaverBurnInShift")) json.optBoolean("screensaverBurnInShift") else s.screensaverBurnInShift,
+            screensaverAmbientCycle = if (json.has("screensaverAmbientCycle")) json.optBoolean("screensaverAmbientCycle") else s.screensaverAmbientCycle,
           )
         }
       }
@@ -2028,25 +2077,19 @@ class LauncherViewModel(
         }
       override fun selectWeatherLocation(location: WeatherLocation) =
         this@LauncherViewModel.selectWeatherLocation(location)
-      override fun updateWeatherOptions(
-        enabled: Boolean?,
-        useFahrenheit: Boolean?,
-        showForecast: Boolean?,
-        days: Int?,
-        forecastSize: String?,
-        iconStyle: String?,
-        showBackdrop: Boolean?,
-      ) {
+      override fun updateWeatherJson(json: org.json.JSONObject) {
+        val enabled = if (json.has("weatherEnabled")) json.optBoolean("weatherEnabled") else null
+        val useFahrenheit = if (json.has("weatherUseFahrenheit")) json.optBoolean("weatherUseFahrenheit") else null
         val unitChanged = useFahrenheit != null && useFahrenheit != _uiState.value.settings.weatherUseFahrenheit
         updateSettings { s ->
           s.copy(
             weatherEnabled = if (enabled != null) enabled && s.isWeatherConfigured else s.weatherEnabled,
             weatherUseFahrenheit = useFahrenheit ?: s.weatherUseFahrenheit,
-            weatherShowForecast = showForecast ?: s.weatherShowForecast,
-            weatherDays = days?.coerceIn(1, 7) ?: s.weatherDays,
-            weatherForecastSize = forecastSize ?: s.weatherForecastSize,
-            weatherIconStyle = iconStyle ?: s.weatherIconStyle,
-            weatherShowBackdrop = showBackdrop ?: s.weatherShowBackdrop,
+            weatherShowForecast = if (json.has("weatherShowForecast")) json.optBoolean("weatherShowForecast") else s.weatherShowForecast,
+            weatherDays = if (json.has("weatherDays")) json.optInt("weatherDays", 5).coerceIn(1, 7) else s.weatherDays,
+            weatherForecastSize = if (json.has("weatherForecastSize")) WeatherForecastSize.fromId(json.optString("weatherForecastSize")).id else s.weatherForecastSize,
+            weatherIconStyle = if (json.has("weatherIconStyle")) json.optString("weatherIconStyle") else s.weatherIconStyle,
+            weatherShowBackdrop = if (json.has("weatherShowBackdrop")) json.optBoolean("weatherShowBackdrop") else s.weatherShowBackdrop,
           )
         }
         val latest = _uiState.value.settings
@@ -2055,6 +2098,36 @@ class LauncherViewModel(
         } else if (enabled == false) {
           weatherJob?.cancel()
           weatherJob = null
+        }
+      }
+      override fun updateSecurityJson(json: org.json.JSONObject) {
+        if (json.optBoolean("resetToDefaults", false)) {
+          resetToDefaults()
+          return
+        }
+        updateSettings { s ->
+          val nextPin = when {
+            json.optBoolean("clearPin", false) -> ""
+            json.has("parentalPin") -> json.optString("parentalPin", "").filter { it.isDigit() }.take(4)
+            else -> s.parentalPin
+          }
+          s.copy(
+            parentalPin = nextPin,
+            pinProtectSettings = if (json.has("pinProtectSettings")) json.optBoolean("pinProtectSettings") else s.pinProtectSettings,
+            updateCheckSchedule = if (json.has("updateCheckSchedule")) UpdateCheckSchedule.fromId(json.optString("updateCheckSchedule")).id else s.updateCheckSchedule,
+          )
+        }
+      }
+      override fun updateAppAction(action: String, packageName: String, value: String) {
+        when (action) {
+          "rename" -> renameApp(packageName, value)
+          "reset_icon" -> resetCustomAppIcon(packageName)
+          "hide" -> hideApp(packageName)
+          "unhide" -> unhideApp(packageName)
+          "toggle_pin" -> updateSettings { s ->
+            val next = if (packageName in s.pinLockedPackages) s.pinLockedPackages - packageName else s.pinLockedPackages + packageName
+            s.copy(pinLockedPackages = next)
+          }
         }
       }
       override fun saveUploadedWallpaper(bytes: ByteArray): Boolean {
