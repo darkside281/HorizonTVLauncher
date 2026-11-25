@@ -809,6 +809,13 @@ data class PinPromptState(
   val pendingAction: PinPendingAction,
 )
 
+data class WebCompanionInfo(
+  val url: String,
+  val qrUrl: String,
+  val sessionCode: String,
+  val lastActivity: String? = null,
+)
+
 data class LauncherUiState(
   val isLoading: Boolean = true,
   val isDefaultHome: Boolean = false,
@@ -839,6 +846,7 @@ data class LauncherUiState(
   val reorderingTarget: ReorderTarget? = null,
   val isSettingsOpen: Boolean = false,
   val isSetupWizardOpen: Boolean = false,
+  val webCompanionInfo: WebCompanionInfo? = null,
   val setupProviderDialog: MediaWallpaperProvider? = null,
   val isAddingSubreddit: Boolean = false,
   val isTestingJellyfin: Boolean = false,

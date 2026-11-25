@@ -263,6 +263,7 @@ class MainActivity : ComponentActivity() {
       BackHandler(enabled = true) {
         when {
           state.pinPrompt != null -> viewModel.dismissPinPrompt()
+          state.webCompanionInfo != null -> viewModel.stopWebCompanion()
           state.isSetupWizardOpen -> viewModel.completeSetupWizard()
           state.isScreensaverActive -> viewModel.stopScreensaver()
           state.isTvInputsDialogOpen -> viewModel.closeTvInputsDialog()
@@ -406,6 +407,8 @@ class MainActivity : ComponentActivity() {
           onOpenSetupWizard = cb.onOpenSetupWizard,
           onCompleteSetupWizard = cb.onCompleteSetupWizard,
           onEnableRedditWallpapersFromWizard = cb.onEnableRedditWallpapersFromWizard,
+          onStartWebCompanion = cb.onStartWebCompanion,
+          onStopWebCompanion = cb.onStopWebCompanion,
           onSetTileOpacity = cb.onSetTileOpacity,
           onSetTileSpacing = cb.onSetTileSpacing,
           onToggleShowClock = cb.onToggleShowClock,
@@ -585,6 +588,8 @@ class MainActivity : ComponentActivity() {
     val onOpenSetupWizard = vm::openSetupWizard
     val onCompleteSetupWizard = vm::completeSetupWizard
     val onEnableRedditWallpapersFromWizard = vm::enableRedditWallpapersFromWizard
+    val onStartWebCompanion = vm::startWebCompanion
+    val onStopWebCompanion = vm::stopWebCompanion
     val onSetTileOpacity = vm::setTileOpacity
     val onSetTileSpacing = vm::setTileSpacing
     val onToggleShowClock = vm::toggleShowClock

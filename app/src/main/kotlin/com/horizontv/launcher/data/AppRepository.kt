@@ -43,6 +43,8 @@ interface InstalledAppsDataSource {
   suspend fun loadInstalledApps(customIconPaths: Map<String, String> = emptyMap()): List<AppInfo>
   suspend fun saveCustomIcon(packageName: String, sourceUri: Uri): String?
   suspend fun deleteCustomIcon(path: String?)
+  fun saveCustomIconBytes(packageName: String, bytes: ByteArray): String? = null
+  fun saveCustomWallpaperBytes(bytes: ByteArray): String? = null
   fun packageChanges(): Flow<Unit>
   fun networkAvailable(): Flow<Unit>
   fun getNetworkType(): NetworkType
@@ -218,6 +220,54 @@ class AppRepository(private val context: Context) : InstalledAppsDataSource {
       runCatching { File(path).delete() }
     }
   }
+
+  override fun saveCustomIconBytes(packageName: String, bytes: ByteArray): String? = runCatching {
+    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@runCatching null
+    val maxSide = 512
+    val finalBitmap = if (decoded.width > maxSide || decoded.height > maxSide) {
+      val scale = minOf(maxSide.toFloat() / decoded.width, maxSide.toFloat() / decoded.height)
+      Bitmap.createScaledBitmap(
+        decoded,
+        (decoded.width * scale).toInt().coerceAtLeast(1),
+        (decoded.height * scale).toInt().coerceAtLeast(1),
+        true,
+      ).also { if (it !== decoded) decoded.recycle() }
+    } else {
+      decoded
+    }
+    val dir = File(context.filesDir, "custom_icons").apply { mkdirs() }
+    val safeName = packageName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+    val outFile = File(dir, "$safeName.png")
+    FileOutputStream(outFile).use { fos ->
+      finalBitmap.compress(Bitmap.CompressFormat.PNG, 95, fos)
+    }
+    finalBitmap.recycle()
+    outFile.absolutePath
+  }.getOrNull()
+
+  override fun saveCustomWallpaperBytes(bytes: ByteArray): String? = runCatching {
+    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@runCatching null
+    val maxW = 1920
+    val maxH = 1080
+    val finalBitmap = if (decoded.width > maxW || decoded.height > maxH) {
+      val scale = minOf(maxW.toFloat() / decoded.width, maxH.toFloat() / decoded.height)
+      Bitmap.createScaledBitmap(
+        decoded,
+        (decoded.width * scale).toInt().coerceAtLeast(1),
+        (decoded.height * scale).toInt().coerceAtLeast(1),
+        true,
+      ).also { if (it !== decoded) decoded.recycle() }
+    } else {
+      decoded
+    }
+    val dir = File(context.filesDir, "custom_wallpapers").apply { mkdirs() }
+    val outFile = File(dir, "companion_${System.currentTimeMillis()}.jpg")
+    FileOutputStream(outFile).use { fos ->
+      finalBitmap.compress(Bitmap.CompressFormat.JPEG, 92, fos)
+    }
+    finalBitmap.recycle()
+    Uri.fromFile(outFile).toString()
+  }.getOrNull()
 
   override fun packageChanges(): Flow<Unit> = callbackFlow {
     val receiver = object : BroadcastReceiver() {

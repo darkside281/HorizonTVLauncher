@@ -10,6 +10,7 @@ import com.horizontv.launcher.data.InstalledAppsDataSource
 import com.horizontv.launcher.data.JellyfinClient
 import com.horizontv.launcher.data.JellyfinDataSource
 import com.horizontv.launcher.data.JustWatchClient
+import com.horizontv.launcher.data.LocalWebCompanionServer
 import com.horizontv.launcher.data.PhotoEntry
 import com.horizontv.launcher.data.PlexClient
 import com.horizontv.launcher.data.RedditWallpaperClient
@@ -21,6 +22,7 @@ import com.horizontv.launcher.data.StreamingSearchDataSource
 import com.horizontv.launcher.data.TmdbWallpaperClient
 import com.horizontv.launcher.data.WeatherClient
 import com.horizontv.launcher.data.WeatherDataSource
+import com.horizontv.launcher.data.WebCompanionBridge
 import com.horizontv.launcher.model.AppFilter
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.AppMenuTarget
@@ -50,6 +52,7 @@ import com.horizontv.launcher.model.TvInputSource
 import com.horizontv.launcher.model.UpdateCheckSchedule
 import com.horizontv.launcher.model.WeatherForecastSize
 import com.horizontv.launcher.model.WeatherLocation
+import com.horizontv.launcher.model.WebCompanionInfo
 import java.util.UUID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -356,8 +359,10 @@ class LauncherViewModel(
     showStatus("Row renamed to \"$cleaned\"")
   }
 
-  fun moveRow(rowId: String, delta: Int) {
-    if (isLayoutLockedWithToast()) return
+  fun moveRow(rowId: String, delta: Int) = moveRowInternal(rowId, delta, bypassLayoutLock = false)
+
+  private fun moveRowInternal(rowId: String, delta: Int, bypassLayoutLock: Boolean) {
+    if (!bypassLayoutLock && isLayoutLockedWithToast()) return
     updateSettings { settings ->
       val list = settings.rows.toMutableList()
       val idx = list.indexOfFirst { it.id == rowId }
@@ -370,8 +375,10 @@ class LauncherViewModel(
     }
   }
 
-  fun deleteRow(rowId: String) {
-    if (isLayoutLockedWithToast()) return
+  fun deleteRow(rowId: String) = deleteRowInternal(rowId, bypassLayoutLock = false)
+
+  private fun deleteRowInternal(rowId: String, bypassLayoutLock: Boolean) {
+    if (!bypassLayoutLock && isLayoutLockedWithToast()) return
     val currentRows = _uiState.value.settings.rows
     if (currentRows.size <= 1) {
       showStatus("Keep at least one row on your home screen")
@@ -420,8 +427,10 @@ class LauncherViewModel(
     _uiState.update { it.copy(orderingRowId = null) }
   }
 
-  fun sortRowAppsAlphabetically(rowId: String) {
-    if (isLayoutLockedWithToast()) return
+  fun sortRowAppsAlphabetically(rowId: String) = sortRowAppsAlphabeticallyInternal(rowId, bypassLayoutLock = false)
+
+  private fun sortRowAppsAlphabeticallyInternal(rowId: String, bypassLayoutLock: Boolean) {
+    if (!bypassLayoutLock && isLayoutLockedWithToast()) return
     val labelsByPkg = _uiState.value.allVisibleApps.associate { it.packageName to it.label }
     val rowTitle = _uiState.value.settings.rows.firstOrNull { it.id == rowId }?.title ?: "Row"
     updateSettings { settings ->
@@ -440,9 +449,12 @@ class LauncherViewModel(
     showStatus("Sorted $rowTitle A–Z")
   }
 
-  fun toggleAppInRow(rowId: String, packageName: String) {
-    if (isLayoutLockedWithToast()) return
-    val appLabel = _uiState.value.allVisibleApps.firstOrNull { it.packageName == packageName }?.label ?: "App"
+  fun toggleAppInRow(rowId: String, packageName: String) =
+    toggleAppInRowInternal(rowId, packageName, bypassLayoutLock = false)
+
+  private fun toggleAppInRowInternal(rowId: String, packageName: String, bypassLayoutLock: Boolean) {
+    if (!bypassLayoutLock && isLayoutLockedWithToast()) return
+    val appLabel = _uiState.value.allApps.firstOrNull { it.packageName == packageName }?.label ?: "App"
     val rowTitle = _uiState.value.settings.rows.firstOrNull { it.id == rowId }?.title ?: "Row"
     updateSettings { settings ->
       val updatedRows = settings.rows.map { row ->
@@ -466,8 +478,11 @@ class LauncherViewModel(
     }
   }
 
-  fun moveAppInRow(rowId: String, packageName: String, delta: Int) {
-    if (isLayoutLockedWithToast()) return
+  fun moveAppInRow(rowId: String, packageName: String, delta: Int) =
+    moveAppInRowInternal(rowId, packageName, delta, bypassLayoutLock = false)
+
+  private fun moveAppInRowInternal(rowId: String, packageName: String, delta: Int, bypassLayoutLock: Boolean) {
+    if (!bypassLayoutLock && isLayoutLockedWithToast()) return
     updateSettings { settings ->
       val updatedRows = settings.rows.map { row ->
         if (row.id != rowId) {
@@ -1812,6 +1827,264 @@ class LauncherViewModel(
   fun completeSetupWizard() {
     updateSettings { it.copy(hasCompletedSetupWizard = true) }
     _uiState.update { it.copy(isSetupWizardOpen = false) }
+  }
+
+  private var webCompanionServer: LocalWebCompanionServer? = null
+
+  fun startWebCompanion() {
+    stopWebCompanion()
+    val bridge = object : WebCompanionBridge {
+      override fun getSettings(): LauncherSettings = _uiState.value.settings
+      override fun getApps(): List<AppInfo> = _uiState.value.allVisibleApps
+      override fun getAllInstalledApps(): List<AppInfo> = _uiState.value.allApps
+      override fun removeUninstalledFromRow(rowId: String) {
+        val installedPkgs = _uiState.value.allApps.map { it.packageName }.toSet()
+        updateSettings { s ->
+          s.copy(
+            rows = s.rows.map { r ->
+              if (r.id == rowId) r.copy(packageNames = r.packageNames.filter { it in installedPkgs }) else r
+            },
+          )
+        }
+      }
+      override fun exportBackupJson(): String = this@LauncherViewModel.exportBackupJson()
+      override fun restoreBackupJson(raw: String): Boolean {
+        val check = backupSerializer.decodeFromJson(raw, existing = _uiState.value.settings)
+        if (check.isFailure) return false
+        this@LauncherViewModel.restoreBackupJson(raw)
+        return true
+      }
+      override fun saveServerConfig(provider: String, url: String, token: String) {
+        when (provider) {
+          "jellyfin" -> updateSettings {
+            it.copy(
+              jellyfinServerUrl = url,
+              jellyfinApiKey = token,
+              wallpaperProvider = MediaWallpaperProvider.JELLYFIN.id,
+              jellyfinEnabled = url.isNotBlank() && token.isNotBlank(),
+            )
+          }
+          "plex" -> updateSettings {
+            it.copy(
+              plexServerUrl = url,
+              plexToken = token,
+              wallpaperProvider = MediaWallpaperProvider.PLEX.id,
+              jellyfinEnabled = url.isNotBlank() && token.isNotBlank(),
+            )
+          }
+          "emby" -> updateSettings {
+            it.copy(
+              embyServerUrl = url,
+              embyApiKey = token,
+              wallpaperProvider = MediaWallpaperProvider.EMBY.id,
+              jellyfinEnabled = url.isNotBlank() && token.isNotBlank(),
+            )
+          }
+          "tmdb" -> updateSettings {
+            it.copy(
+              tmdbApiKey = token,
+              wallpaperProvider = MediaWallpaperProvider.TMDB.id,
+              jellyfinEnabled = token.isNotBlank(),
+            )
+          }
+        }
+        val s = _uiState.value.settings
+        if (s.jellyfinEnabled && s.isActiveWallpaperProviderConfigured) {
+          startJellyfinSlideshow(fetchFreshList = true)
+        }
+      }
+      override fun updateHomeOptions(
+        minimalistDock: Boolean?,
+        use24HourClock: Boolean?,
+        showTileTitles: Boolean?,
+        tileOpacity: Float?,
+        tileSpacing: String?,
+        regionCode: String?,
+      ) {
+        updateSettings { s ->
+          s.copy(
+            minimalistDockMode = minimalistDock ?: s.minimalistDockMode,
+            use24HourClock = use24HourClock ?: s.use24HourClock,
+            showTileTitles = showTileTitles ?: s.showTileTitles,
+            tileOpacity = tileOpacity?.coerceIn(0.35f, 1.0f) ?: s.tileOpacity,
+            tileSpacing = tileSpacing ?: s.tileSpacing,
+            justWatchRegion = regionCode ?: s.justWatchRegion,
+          )
+        }
+      }
+      override fun renameRow(rowId: String, newTitle: String) = this@LauncherViewModel.renameRow(rowId, newTitle)
+      override fun createRow(title: String) = this@LauncherViewModel.createRow(title, openAppPickerAfter = false)
+      override fun moveRow(rowId: String, delta: Int) = moveRowInternal(rowId, delta, bypassLayoutLock = true)
+      override fun deleteRow(rowId: String) = deleteRowInternal(rowId, bypassLayoutLock = true)
+      override fun toggleAppInRow(rowId: String, packageName: String) =
+        toggleAppInRowInternal(rowId, packageName, bypassLayoutLock = true)
+      override fun moveAppInRow(rowId: String, packageName: String, delta: Int) =
+        moveAppInRowInternal(rowId, packageName, delta, bypassLayoutLock = true)
+      override fun sortRowAppsAlphabetically(rowId: String) =
+        sortRowAppsAlphabeticallyInternal(rowId, bypassLayoutLock = true)
+      override fun updateWallpaperOptions(
+        themeId: String?,
+        accentId: String?,
+        providerId: String?,
+        slideshowEnabled: Boolean?,
+        dimAlpha: Float?,
+        intervalSeconds: Int?,
+        showTitle: Boolean?,
+        clearCustomWallpaper: Boolean,
+      ) {
+        if (clearCustomWallpaper) {
+          setCustomWallpaper(null)
+          return
+        }
+        if (themeId != null) {
+          selectTheme(themeId)
+          return
+        }
+        if (accentId != null) {
+          selectAccent(accentId)
+        }
+        val providerChanged = providerId != null && providerId != _uiState.value.settings.wallpaperProvider
+        if (providerChanged) {
+          selectWallpaperProvider(MediaWallpaperProvider.fromId(providerId))
+        }
+        updateSettings { s ->
+          val activeProv = s.activeWallpaperProvider
+          val withCfg = s.withProviderConfig(activeProv) { cfg ->
+            cfg.copy(
+              intervalSeconds = intervalSeconds?.coerceIn(10, 600) ?: cfg.intervalSeconds,
+              showTitle = showTitle ?: cfg.showTitle,
+            )
+          }
+          withCfg.copy(
+            wallpaperDimAlpha = dimAlpha?.coerceIn(0.20f, 0.85f) ?: withCfg.wallpaperDimAlpha,
+            jellyfinEnabled = if (!providerChanged && slideshowEnabled != null) {
+              slideshowEnabled && withCfg.isActiveWallpaperProviderConfigured
+            } else {
+              withCfg.jellyfinEnabled
+            },
+          )
+        }
+        val latest = _uiState.value.settings
+        if (latest.jellyfinEnabled && latest.isActiveWallpaperProviderConfigured) {
+          startJellyfinSlideshow(fetchFreshList = providerChanged)
+        } else if (slideshowEnabled == false) {
+          stopJellyfinSlideshow()
+        }
+      }
+      override fun updateScreensaverOptions(
+        enabled: Boolean?,
+        modeId: String?,
+        timeoutMinutes: Int?,
+        intervalSeconds: Int?,
+        dimAlpha: Float?,
+        kenBurns: Boolean?,
+        showClock: Boolean?,
+        showWeather: Boolean?,
+        showTitle: Boolean?,
+        burnInShift: Boolean?,
+        ambientCycle: Boolean?,
+      ) {
+        updateSettings { s ->
+          s.copy(
+            screensaverEnabled = enabled ?: s.screensaverEnabled,
+            screensaverMode = modeId ?: s.screensaverMode,
+            screensaverTimeoutMinutes = timeoutMinutes?.coerceIn(1, 60) ?: s.screensaverTimeoutMinutes,
+            screensaverIntervalSeconds = intervalSeconds?.coerceIn(5, 120) ?: s.screensaverIntervalSeconds,
+            screensaverDimAlpha = dimAlpha?.coerceIn(0.0f, 0.75f) ?: s.screensaverDimAlpha,
+            screensaverKenBurns = kenBurns ?: s.screensaverKenBurns,
+            screensaverShowClock = showClock ?: s.screensaverShowClock,
+            screensaverShowWeather = showWeather ?: s.screensaverShowWeather,
+            screensaverShowTitle = showTitle ?: s.screensaverShowTitle,
+            screensaverBurnInShift = burnInShift ?: s.screensaverBurnInShift,
+            screensaverAmbientCycle = ambientCycle ?: s.screensaverAmbientCycle,
+          )
+        }
+      }
+      override fun searchWeatherLocationsSync(query: String): List<WeatherLocation> =
+        kotlinx.coroutines.runBlocking {
+          weatherDataSource.searchLocations(query).getOrDefault(emptyList())
+        }
+      override fun selectWeatherLocation(location: WeatherLocation) =
+        this@LauncherViewModel.selectWeatherLocation(location)
+      override fun updateWeatherOptions(
+        enabled: Boolean?,
+        useFahrenheit: Boolean?,
+        showForecast: Boolean?,
+        days: Int?,
+        forecastSize: String?,
+        iconStyle: String?,
+        showBackdrop: Boolean?,
+      ) {
+        val unitChanged = useFahrenheit != null && useFahrenheit != _uiState.value.settings.weatherUseFahrenheit
+        updateSettings { s ->
+          s.copy(
+            weatherEnabled = if (enabled != null) enabled && s.isWeatherConfigured else s.weatherEnabled,
+            weatherUseFahrenheit = useFahrenheit ?: s.weatherUseFahrenheit,
+            weatherShowForecast = showForecast ?: s.weatherShowForecast,
+            weatherDays = days?.coerceIn(1, 7) ?: s.weatherDays,
+            weatherForecastSize = forecastSize ?: s.weatherForecastSize,
+            weatherIconStyle = iconStyle ?: s.weatherIconStyle,
+            weatherShowBackdrop = showBackdrop ?: s.weatherShowBackdrop,
+          )
+        }
+        val latest = _uiState.value.settings
+        if (latest.weatherEnabled && latest.isWeatherConfigured && (unitChanged || enabled == true)) {
+          startWeatherRefreshLoop()
+        } else if (enabled == false) {
+          weatherJob?.cancel()
+          weatherJob = null
+        }
+      }
+      override fun saveUploadedWallpaper(bytes: ByteArray): Boolean {
+        val uri = appDataSource.saveCustomWallpaperBytes(bytes) ?: return false
+        setCustomWallpaper(uri)
+        return true
+      }
+      override fun saveUploadedAppIcon(packageName: String, bytes: ByteArray): Boolean {
+        val savedPath = appDataSource.saveCustomIconBytes(packageName, bytes) ?: return false
+        updateSettings { s ->
+          s.copy(customIconPaths = s.customIconPaths + (packageName to savedPath))
+        }
+        refreshApps()
+        return true
+      }
+      override fun onCompanionActivity(message: String) {
+        _uiState.update { st ->
+          st.copy(webCompanionInfo = st.webCompanionInfo?.copy(lastActivity = message))
+        }
+      }
+    }
+
+    val server = LocalWebCompanionServer(viewModelScope, bridge)
+    server.start().fold(
+      onSuccess = { (url, qrUrl, code) ->
+        webCompanionServer = server
+        _uiState.update {
+          it.copy(
+            isSettingsOpen = false,
+            webCompanionInfo = WebCompanionInfo(
+              url = url,
+              qrUrl = qrUrl,
+              sessionCode = code,
+            ),
+          )
+        }
+      },
+      onFailure = { err ->
+        showStatus(err.message ?: "Could not start Local Web Companion")
+      },
+    )
+  }
+
+  fun stopWebCompanion() {
+    webCompanionServer?.stop()
+    webCompanionServer = null
+    _uiState.update { it.copy(webCompanionInfo = null) }
+  }
+
+  override fun onCleared() {
+    stopWebCompanion()
+    super.onCleared()
   }
 
   fun enableRedditWallpapersFromWizard() {

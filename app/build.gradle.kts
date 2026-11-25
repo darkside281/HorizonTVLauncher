@@ -12,8 +12,8 @@ android {
     applicationId = "com.horizontv.launcher"
     minSdk = 24
     targetSdk = 36
-    versionCode = 81
-    versionName = "2.5.37"
+    versionCode = 85
+    versionName = "2.5.41"
   }
 
   buildTypes {
@@ -65,6 +65,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.material.icons.extended)
+  implementation("com.google.zxing:core:3.5.3")
 
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)

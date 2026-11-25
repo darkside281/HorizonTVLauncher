@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderOpen
@@ -203,6 +204,7 @@ fun SettingsOverlay(
   onTogglePinProtectSettings: () -> Unit = {},
   onUnlockAppPin: (String) -> Unit = {},
   onOpenSetupWizard: () -> Unit = {},
+  onStartWebCompanion: () -> Unit = {},
   onOpenHomeSettings: () -> Unit,
   onOpenPlayStore: () -> Unit,
   onBackupConfig: () -> Unit,
@@ -634,6 +636,7 @@ fun SettingsOverlay(
                     onOpenHomeSettings = onOpenHomeSettings,
                     onOpenPlayStore = onOpenPlayStore,
                     onOpenSetupWizard = onOpenSetupWizard,
+                    onStartWebCompanion = onStartWebCompanion,
                     onToggleShowNonLeanback = onToggleShowNonLeanback,
                     onRefreshApps = onRefreshApps,
                     onBackupConfig = onBackupConfig,
@@ -2373,6 +2376,7 @@ private fun SettingsSystemPane(
   onOpenHomeSettings: () -> Unit,
   onOpenPlayStore: () -> Unit,
   onOpenSetupWizard: () -> Unit,
+  onStartWebCompanion: () -> Unit,
   onToggleShowNonLeanback: () -> Unit,
   onRefreshApps: () -> Unit,
   onBackupConfig: () -> Unit,
@@ -2414,6 +2418,17 @@ private fun SettingsSystemPane(
     accent = accent,
     highlighted = false,
     onClick = onOpenSetupWizard,
+    modifier = Modifier
+      .fillMaxWidth()
+      .focusProperties { left = activeTabRequester },
+  )
+
+  SettingsActionChip(
+    icon = Icons.Rounded.Devices,
+    label = "Local Web Companion (Phone / PC)…",
+    accent = accent,
+    highlighted = false,
+    onClick = onStartWebCompanion,
     modifier = Modifier
       .fillMaxWidth()
       .focusProperties { left = activeTabRequester },

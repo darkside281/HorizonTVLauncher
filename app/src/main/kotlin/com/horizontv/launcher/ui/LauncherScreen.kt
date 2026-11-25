@@ -98,6 +98,7 @@ import com.horizontv.launcher.ui.components.AppGridTile
 import com.horizontv.launcher.ui.components.AppUpdateDialog
 import com.horizontv.launcher.ui.components.PinDialog
 import com.horizontv.launcher.ui.components.SetupWizardDialog
+import com.horizontv.launcher.ui.components.WebCompanionDialog
 import com.horizontv.launcher.ui.components.FavoriteBannerCard
 import com.horizontv.launcher.ui.components.JellyfinSetupDialog
 import com.horizontv.launcher.ui.components.LauncherTopBar
@@ -235,6 +236,8 @@ fun LauncherScreen(
   onOpenSetupWizard: () -> Unit = {},
   onCompleteSetupWizard: () -> Unit = {},
   onEnableRedditWallpapersFromWizard: () -> Unit = {},
+  onStartWebCompanion: () -> Unit = {},
+  onStopWebCompanion: () -> Unit = {},
   onSetTileOpacity: (Float) -> Unit = {},
   onSetTileSpacing: (String) -> Unit = {},
   onToggleShowClock: () -> Unit,
@@ -1260,6 +1263,7 @@ fun LauncherScreen(
         onTogglePinProtectSettings = onTogglePinProtectSettings,
         onUnlockAppPin = onUnlockAppPin,
         onOpenSetupWizard = onOpenSetupWizard,
+        onStartWebCompanion = onStartWebCompanion,
         onOpenHomeSettings = onOpenHomeSettings,
         onOpenPlayStore = onOpenPlayStore,
         onBackupConfig = onBackupConfig,
@@ -1344,6 +1348,15 @@ fun LauncherScreen(
           onToggleAppInRow(state.settings.primaryRow.id, pkg)
         },
         onFinish = onCompleteSetupWizard,
+      )
+    }
+
+    val companionInfo = state.webCompanionInfo
+    if (companionInfo != null) {
+      WebCompanionDialog(
+        info = companionInfo,
+        accent = accent,
+        onStopAndClose = onStopWebCompanion,
       )
     }
 
