@@ -1932,6 +1932,16 @@ class LauncherViewModel(
         toggleAppInRowInternal(rowId, packageName, bypassLayoutLock = true)
       override fun moveAppInRow(rowId: String, packageName: String, delta: Int) =
         moveAppInRowInternal(rowId, packageName, delta, bypassLayoutLock = true)
+      override fun setRowAppsOrder(rowId: String, packageNames: List<String>) {
+        val cleaned = packageNames.distinct()
+        updateSettings { s ->
+          s.copy(
+            rows = s.rows.map { r ->
+              if (r.id == rowId) r.copy(packageNames = cleaned) else r
+            },
+          )
+        }
+      }
       override fun sortRowAppsAlphabetically(rowId: String) =
         sortRowAppsAlphabeticallyInternal(rowId, bypassLayoutLock = true)
       override fun updateWallpaperOptions(

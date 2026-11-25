@@ -50,6 +50,7 @@ interface WebCompanionBridge {
   fun deleteRow(rowId: String)
   fun toggleAppInRow(rowId: String, packageName: String)
   fun moveAppInRow(rowId: String, packageName: String, delta: Int)
+  fun setRowAppsOrder(rowId: String, packageNames: List<String>)
   fun sortRowAppsAlphabetically(rowId: String)
   fun updateWallpaperOptions(
     themeId: String?,
@@ -389,6 +390,23 @@ class LocalWebCompanionServer(
           if (rowId.isNotEmpty() && pkg.isNotEmpty() && delta != 0) {
             bridge.moveAppInRow(rowId, pkg, delta)
             bridge.onCompanionActivity("Rearranged Dock / Row tiles from browser")
+          }
+          writeJson(output, 200, JSONObject().put("ok", true))
+        }
+
+        method == "POST" && path == "/api/rows/apps/reorder" -> {
+          val json = JSONObject(bodyBytes.toString(Charsets.UTF_8))
+          val rowId = json.optString("rowId", "")
+          val arr = json.optJSONArray("packageNames")
+          if (rowId.isNotEmpty() && arr != null) {
+            val pkgs = buildList {
+              for (i in 0 until arr.length()) {
+                val p = arr.optString(i, "").trim()
+                if (p.isNotEmpty()) add(p)
+              }
+            }
+            bridge.setRowAppsOrder(rowId, pkgs)
+            bridge.onCompanionActivity("Dragged & reordered Dock / Row tiles")
           }
           writeJson(output, 200, JSONObject().put("ok", true))
         }
@@ -753,6 +771,10 @@ class LocalWebCompanionServer(
   .app-meta { display:flex; align-items:center; gap:10px; min-width:0; }
   .app-ico { width:30px; height:30px; border-radius:8px; object-fit:cover; background:rgba(255,255,255,.08); flex-shrink:0; }
   .app-fallback { width:30px; height:30px; border-radius:8px; background:rgba(56,189,248,.16); color:#7dd3fc; display:inline-flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; flex-shrink:0; }
+  .drag-handle { cursor:grab; color:var(--muted); font-size:16px; padding:4px 6px; user-select:none; touch-action:none; letter-spacing:-2px; }
+  .drag-handle:active { cursor:grabbing; color:var(--accent); }
+  .item.dragging { opacity:.45; border-color:var(--accent); }
+  .item.drag-over { border-color:var(--accent); background:rgba(56,189,248,.14); box-shadow:0 0 0 1px var(--accent); }
 </style>
 </head>
 <body>
@@ -1099,11 +1121,87 @@ function renderDockApps() {
   if (items.length === 0) {
     curEl.innerHTML = '<div class="sub" style="padding:8px 0;">No apps in this row yet. Add some from below.</div>';
   } else {
+    let dragFromIdx = -1;
+    let touchOverIdx = -1;
+    const commitReorder = async (fromIdx, toIdx) => {
+      if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+      const order = items.map(x => x.packageName);
+      const [moved] = order.splice(fromIdx, 1);
+      order.splice(toIdx, 0, moved);
+      await api('/api/rows/apps/reorder', { method:'POST', body:JSON.stringify({ rowId:row.id, packageNames:order }) });
+      toast('Tile order updated');
+      loadState();
+    };
+    const clearHighlights = () => curEl.querySelectorAll('.item').forEach(el => el.classList.remove('dragging', 'drag-over'));
+
     items.forEach((it, idx) => {
-      const div = document.createElement('div'); div.className = 'item';
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.draggable = true;
+      div.dataset.idx = String(idx);
+
+      div.ondragstart = (e) => {
+        dragFromIdx = idx;
+        div.classList.add('dragging');
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); }
+      };
+      div.ondragover = (e) => {
+        e.preventDefault();
+        if (dragFromIdx !== -1 && dragFromIdx !== idx) {
+          curEl.querySelectorAll('.item').forEach(el => el.classList.remove('drag-over'));
+          div.classList.add('drag-over');
+        }
+      };
+      div.ondragleave = () => div.classList.remove('drag-over');
+      div.ondrop = async (e) => {
+        e.preventDefault();
+        const from = dragFromIdx;
+        dragFromIdx = -1;
+        clearHighlights();
+        await commitReorder(from, idx);
+      };
+      div.ondragend = () => { dragFromIdx = -1; clearHighlights(); };
+
       const badge = it.installed ? '' : ' <span class="pill warn">Not installed</span>';
-      div.innerHTML = '<div class="app-meta">' + appIconHtml(it.packageName, it.label, it.installed) +
-        '<div><strong>' + (idx + 1) + '. ' + esc(it.label) + '</strong>' + badge + '</div></div>';
+      const meta = document.createElement('div'); meta.className = 'app-meta';
+      const handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.title = 'Drag to reorder';
+      handle.textContent = '⋮⋮';
+      handle.ontouchstart = (e) => {
+        dragFromIdx = idx;
+        touchOverIdx = idx;
+        div.classList.add('dragging');
+      };
+      handle.ontouchmove = (e) => {
+        if (dragFromIdx === -1) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        const target = document.elementFromPoint(t.clientX, t.clientY);
+        const itemEl = target && target.closest ? target.closest('#dockCurrentApps .item') : null;
+        curEl.querySelectorAll('.item').forEach(el => el.classList.remove('drag-over'));
+        if (itemEl && itemEl.dataset.idx !== undefined) {
+          touchOverIdx = parseInt(itemEl.dataset.idx, 10);
+          if (touchOverIdx !== dragFromIdx) itemEl.classList.add('drag-over');
+        }
+      };
+      handle.ontouchend = async () => {
+        const from = dragFromIdx;
+        const to = touchOverIdx;
+        dragFromIdx = -1;
+        touchOverIdx = -1;
+        clearHighlights();
+        await commitReorder(from, to);
+      };
+
+      meta.appendChild(handle);
+      const infoWrap = document.createElement('div');
+      infoWrap.className = 'app-meta';
+      infoWrap.innerHTML = appIconHtml(it.packageName, it.label, it.installed) +
+        '<div><strong>' + (idx + 1) + '. ' + esc(it.label) + '</strong>' + badge + '</div>';
+      meta.appendChild(infoWrap);
+      div.appendChild(meta);
+
       const acts = document.createElement('div'); acts.className = 'row';
       if (idx > 0) {
         const bUp = document.createElement('button'); bUp.className='btn sec sm'; bUp.textContent='↑';
