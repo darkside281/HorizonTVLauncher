@@ -572,8 +572,14 @@ class LauncherPreferences(context: Context) : SettingsStore {
       justWatchShowRottenTomatoes = prefs.getBoolean(KEY_JW_SHOW_RT, true),
       justWatchShowAgeRating = prefs.getBoolean(KEY_JW_SHOW_AGE_RATING, true),
       searchOpenDetailsPopup = prefs.getBoolean(KEY_SEARCH_OPEN_DETAILS_POPUP, true),
+      recentSearches = decodeStringList(prefs.getString(KEY_RECENT_SEARCHES, null)),
       gridColumns = prefs.getInt(KEY_GRID_COLUMNS, 5).coerceIn(4, 6),
       hasInitializedFavorites = prefs.getBoolean(KEY_INIT_FAVORITES, false),
+      hasCompletedSetupWizard = if (prefs.contains(KEY_SETUP_WIZARD_DONE)) {
+        prefs.getBoolean(KEY_SETUP_WIZARD_DONE, false)
+      } else {
+        prefs.getBoolean(KEY_INIT_FAVORITES, false)
+      },
       screensaverEnabled = prefs.getBoolean(KEY_SS_ENABLED, false),
       screensaverMode = ScreensaverMode.fromId(
         prefs.getString(KEY_SS_MODE, ScreensaverMode.WALLPAPER_ARTWORK.id),
@@ -672,8 +678,10 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putBoolean(KEY_JW_SHOW_RT, settings.justWatchShowRottenTomatoes)
       .putBoolean(KEY_JW_SHOW_AGE_RATING, settings.justWatchShowAgeRating)
       .putBoolean(KEY_SEARCH_OPEN_DETAILS_POPUP, settings.searchOpenDetailsPopup)
+      .putString(KEY_RECENT_SEARCHES, encodeStringList(settings.recentSearches))
       .putInt(KEY_GRID_COLUMNS, settings.gridColumns)
       .putBoolean(KEY_INIT_FAVORITES, settings.hasInitializedFavorites)
+      .putBoolean(KEY_SETUP_WIZARD_DONE, settings.hasCompletedSetupWizard)
       .putBoolean(KEY_SS_ENABLED, settings.screensaverEnabled)
       .putString(KEY_SS_MODE, settings.screensaverMode)
       .putInt(KEY_SS_TIMEOUT_MIN, settings.screensaverTimeoutMinutes.coerceIn(1, 60))
@@ -878,8 +886,10 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_JW_SHOW_RT = "justwatch_show_rotten_tomatoes"
     private const val KEY_JW_SHOW_AGE_RATING = "justwatch_show_age_rating"
     private const val KEY_SEARCH_OPEN_DETAILS_POPUP = "search_open_details_popup"
+    private const val KEY_RECENT_SEARCHES = "recent_searches_json"
     private const val KEY_GRID_COLUMNS = "grid_columns"
     private const val KEY_INIT_FAVORITES = "has_initialized_favorites"
+    private const val KEY_SETUP_WIZARD_DONE = "has_completed_setup_wizard"
     private const val KEY_SS_ENABLED = "screensaver_enabled"
     private const val KEY_SS_MODE = "screensaver_mode"
     private const val KEY_SS_TIMEOUT_MIN = "screensaver_timeout_minutes"

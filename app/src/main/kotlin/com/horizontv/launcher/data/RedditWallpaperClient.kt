@@ -124,7 +124,11 @@ class RedditWallpaperClient : JellyfinDataSource {
 
   private fun presetLibraries(): List<JellyfinLibrary> =
     LauncherSettings.PRESET_REDDIT_SUBREDDITS.map { sub ->
-      JellyfinLibrary(id = sub, name = "r/$sub", collectionType = "reddit")
+      JellyfinLibrary(
+        id = sub,
+        name = LauncherSettings.friendlyRedditLabel(sub),
+        collectionType = "reddit",
+      )
     }
 
   private fun fetchBackdropsInternal(
@@ -289,8 +293,8 @@ class RedditWallpaperClient : JellyfinDataSource {
       }
       if (imageUrl.isEmpty()) continue
 
-      val subDisplay = data.optString("subreddit_name_prefixed", "r/$subreddit").trim()
-        .ifEmpty { "r/$subreddit" }
+      val rawSub = data.optString("subreddit", subreddit).trim().ifEmpty { subreddit }
+      val subDisplay = "${LauncherSettings.friendlyRedditLabel(rawSub)} • Reddit"
       val score = data.optInt("score", 0)
       scored.add(
         score to JellyfinBackdrop(
@@ -337,7 +341,7 @@ class RedditWallpaperClient : JellyfinDataSource {
         results.add(
           JellyfinBackdrop(
             itemId = "wh_$id",
-            title = "r/$subreddit",
+            title = "${LauncherSettings.friendlyRedditLabel(subreddit)} • Reddit",
             year = null,
             imageUrl = path,
             logoUrl = null,

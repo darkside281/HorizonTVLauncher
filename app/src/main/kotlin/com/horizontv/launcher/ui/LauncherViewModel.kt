@@ -187,6 +187,7 @@ class LauncherViewModel(
           isLoading = false,
           allApps = loadedApps,
           settings = currentSettings,
+          isSetupWizardOpen = !currentSettings.hasCompletedSetupWizard,
           networkType = networkType,
           externalSearchProviders = searchProviders,
           tvInputs = tvInputs,
@@ -717,7 +718,7 @@ class LauncherViewModel(
   fun addCustomSubreddit(rawSubreddit: String) {
     val cleaned = RedditWallpaperClient.sanitizeSubreddit(rawSubreddit)
     if (cleaned.length < 2) {
-      showStatus("Enter a valid subreddit name (e.g. EarthPorn)")
+      showStatus("Enter a valid subreddit name (e.g. MostBeautiful)")
       return
     }
     updateSettings { settings ->
@@ -1789,6 +1790,37 @@ class LauncherViewModel(
     showStatus(if (next) "Minimalist Bottom-Dock enabled" else "Standard Home dock enabled")
   }
 
+  fun setMinimalistDockMode(enabled: Boolean) {
+    updateSettings { it.copy(minimalistDockMode = enabled) }
+  }
+
+  fun set24HourClock(enabled: Boolean) {
+    updateSettings { it.copy(use24HourClock = enabled) }
+  }
+
+  fun openSetupWizard() {
+    _uiState.update {
+      it.copy(
+        isSettingsOpen = false,
+        isSetupWizardOpen = true,
+        menuTarget = null,
+        reorderingTarget = null,
+      )
+    }
+  }
+
+  fun completeSetupWizard() {
+    updateSettings { it.copy(hasCompletedSetupWizard = true) }
+    _uiState.update { it.copy(isSetupWizardOpen = false) }
+  }
+
+  fun enableRedditWallpapersFromWizard() {
+    selectWallpaperProvider(MediaWallpaperProvider.REDDIT)
+    if (!_uiState.value.settings.jellyfinEnabled) {
+      toggleJellyfinSlideshow()
+    }
+  }
+
   fun setTileOpacity(opacity: Float) {
     val clamped = opacity.coerceIn(0.35f, 1.0f)
     updateSettings { it.copy(tileOpacity = clamped) }
@@ -1815,6 +1847,20 @@ class LauncherViewModel(
     val next = !_uiState.value.settings.searchOpenDetailsPopup
     updateSettings { it.copy(searchOpenDetailsPopup = next) }
     showStatus(if (next) "Search results open full details popup" else "Search results launch streaming apps directly")
+  }
+
+  fun commitRecentSearch(rawQuery: String) {
+    val trimmed = rawQuery.trim()
+    if (trimmed.length < 2) return
+    updateSettings { current ->
+      val deduped = current.recentSearches.filterNot { it.equals(trimmed, ignoreCase = true) }
+      current.copy(recentSearches = (listOf(trimmed) + deduped).take(8))
+    }
+  }
+
+  fun clearRecentSearches() {
+    updateSettings { it.copy(recentSearches = emptyList()) }
+    showStatus("Recent searches cleared")
   }
 
   fun toggleShowAllAppsSection() {

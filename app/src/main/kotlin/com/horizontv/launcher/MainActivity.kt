@@ -52,6 +52,8 @@ class MainActivity : ComponentActivity() {
     )
   }
 
+  private val cb by lazy { MainCallbacks(this, viewModel) }
+
   private val wallpaperPicker = registerForActivityResult(
     ActivityResultContracts.OpenDocument(),
   ) { uri ->
@@ -152,6 +154,7 @@ class MainActivity : ComponentActivity() {
         ?.trim()
       if (!spoken.isNullOrEmpty()) {
         viewModel.updateSearchQuery(spoken)
+        viewModel.commitRecentSearch(spoken)
       }
     }
   }
@@ -260,6 +263,7 @@ class MainActivity : ComponentActivity() {
       BackHandler(enabled = true) {
         when {
           state.pinPrompt != null -> viewModel.dismissPinPrompt()
+          state.isSetupWizardOpen -> viewModel.completeSetupWizard()
           state.isScreensaverActive -> viewModel.stopScreensaver()
           state.isTvInputsDialogOpen -> viewModel.closeTvInputsDialog()
           state.showUpdateDialog -> viewModel.dismissUpdateDialog()
@@ -287,178 +291,162 @@ class MainActivity : ComponentActivity() {
       ) {
         LauncherScreen(
           state = state,
-          onAppFocused = viewModel::onAppFocused,
-          onLaunchApp = viewModel::launchApp,
-          onOpenAppMenu = viewModel::openAppMenu,
-          onCloseAppMenu = viewModel::closeAppMenu,
-          onToggleAppInRow = viewModel::toggleAppInRow,
-          onMoveAppInRow = viewModel::moveAppInRow,
-          onStartReordering = viewModel::startReordering,
-          onStopReordering = viewModel::stopReordering,
-          onOpenRenameApp = viewModel::openRenameApp,
-          onCloseRenameApp = viewModel::closeRenameApp,
-          onRenameApp = viewModel::renameApp,
-          onOpenCreateRow = viewModel::openCreateRowDialog,
-          onCloseCreateRow = viewModel::closeCreateRowDialog,
-          onCreateRow = { title -> viewModel.createRow(title, openAppPickerAfter = true) },
-          onOpenRenameRow = viewModel::openRenameRowDialog,
-          onCloseRenameRow = viewModel::closeRenameRowDialog,
-          onRenameRow = viewModel::renameRow,
-          onMoveRow = viewModel::moveRow,
-          onDeleteRow = viewModel::deleteRow,
-          onOpenAddAppsToRow = viewModel::openAddAppsToRow,
-          onCloseAddAppsToRow = viewModel::closeAddAppsToRow,
-          onOpenTileOrder = viewModel::openTileOrderDialog,
-          onCloseTileOrder = viewModel::closeTileOrderDialog,
-          onSortRowApps = viewModel::sortRowAppsAlphabetically,
-          onPickCustomIcon = { packageName ->
-            pendingIconPackage = packageName
-            runCatching { customIconPicker.launch(arrayOf("image/*")) }
-          },
-          onResetCustomIcon = viewModel::resetCustomAppIcon,
-          onHideApp = viewModel::hideApp,
-          onUnhideApp = viewModel::unhideApp,
-          onToggleAppPinLock = viewModel::toggleAppPinLock,
-          onUnlockAppPin = viewModel::unlockAppPin,
-          onRequestSetPin = viewModel::requestSetPin,
-          onRequestChangePin = viewModel::requestChangePin,
-          onRequestRemovePin = viewModel::requestRemovePin,
-          onTogglePinProtectSettings = viewModel::togglePinProtectSettings,
-          onPinVerified = viewModel::onPinVerified,
-          onNewPinConfirmed = viewModel::onNewPinConfirmed,
-          onDismissPinPrompt = viewModel::dismissPinPrompt,
-          onSelectFilter = viewModel::setFilter,
-          onToggleSearch = viewModel::toggleSearch,
-          onUpdateSearchQuery = viewModel::updateSearchQuery,
-          onVoiceSearch = ::launchVoiceSearch,
-          onSelectSearchProvider = viewModel::setSearchProvider,
-          onOpenJellyfinSearchItem = viewModel::openJellyfinSearchItem,
-          onOpenStreamingOffer = viewModel::openStreamingOffer,
-          onLoadMoreStreaming = viewModel::loadMoreStreamingResults,
-          onSearchExternalProvider = viewModel::openExternalProviderSearch,
-          onSearchYouTube = viewModel::openYouTubeSearch,
-          onSearchWeb = viewModel::openWebSearch,
-          onOpenSettings = viewModel::openSettings,
-          onCloseSettings = viewModel::closeSettings,
-          onSelectTheme = viewModel::selectTheme,
-          onSelectAccent = viewModel::selectAccent,
-          onPickWallpaper = {
-            runCatching { wallpaperPicker.launch(arrayOf("image/*")) }
-          },
-          onClearWallpaper = { viewModel.setCustomWallpaper(null) },
-          onSetWallpaperDim = viewModel::setWallpaperDimAlpha,
-          onSelectWallpaperProvider = viewModel::selectWallpaperProvider,
-          onOpenJellyfinSetup = { viewModel.openJellyfinSetup() },
-          onCloseJellyfinSetup = viewModel::closeJellyfinSetup,
-          onConnectJellyfin = { url, key, user, pass ->
-            viewModel.connectJellyfin(url, key, user, pass)
-          },
-          onDisconnectJellyfin = { viewModel.disconnectJellyfin() },
-          onToggleJellyfinSlideshow = viewModel::toggleJellyfinSlideshow,
-          onSetJellyfinInterval = viewModel::setJellyfinInterval,
-          onToggleJellyfinShowTitle = viewModel::toggleJellyfinShowTitle,
-          onSetJellyfinMediaType = viewModel::setJellyfinMediaType,
-          onSelectJellyfinLibrary = viewModel::selectJellyfinLibrary,
-          onSetJellyfinBackdropLimit = viewModel::setJellyfinBackdropLimit,
-          onNextJellyfinBackdrop = viewModel::nextJellyfinBackdrop,
-          onSetRedditSort = viewModel::setRedditSort,
-          onOpenAddSubreddit = viewModel::openAddSubredditDialog,
-          onCloseAddSubreddit = viewModel::closeAddSubredditDialog,
-          onAddCustomSubreddit = viewModel::addCustomSubreddit,
-          onOpenWeatherSetup = viewModel::openWeatherSetup,
-          onCloseWeatherSetup = viewModel::closeWeatherSetup,
-          onSearchWeatherLocations = viewModel::searchWeatherLocations,
-          onSelectWeatherLocation = viewModel::selectWeatherLocation,
-          onToggleWeatherEnabled = viewModel::toggleWeatherEnabled,
-          onSetWeatherDays = viewModel::setWeatherDays,
-          onToggleWeatherShowForecast = viewModel::toggleWeatherShowForecast,
-          onSetWeatherForecastSize = viewModel::setWeatherForecastSize,
-          onToggleWeatherUnit = viewModel::toggleWeatherUnit,
-          onSetWeatherIconStyle = viewModel::setWeatherIconStyle,
-          onToggleWeatherBackdrop = viewModel::toggleWeatherBackdrop,
-          onRefreshWeather = viewModel::refreshWeather,
-          onToggle24HourClock = viewModel::toggle24HourClock,
-          onSetGridColumns = viewModel::setGridColumns,
-          onToggleShowNonLeanback = viewModel::toggleShowNonLeanbackApps,
-          onToggleShowSearchBar = viewModel::toggleShowSearchBar,
-          onToggleSearchOpenDetailsPopup = viewModel::toggleSearchOpenDetailsPopup,
-          onToggleSearchProvider = viewModel::toggleSearchProvider,
-          onToggleJustWatchFilterServices = viewModel::toggleJustWatchFilterServices,
-          onToggleJustWatchService = viewModel::toggleJustWatchService,
-          onSelectAllJustWatchServices = viewModel::selectAllJustWatchServices,
-          onClearAllJustWatchServices = viewModel::clearAllJustWatchServices,
-          onToggleJustWatchIncludeRentBuy = viewModel::toggleJustWatchIncludeRentBuy,
-          onToggleJustWatchHideUnmatchedTitles = viewModel::toggleJustWatchHideUnmatchedTitles,
-          onSetJustWatchRegion = viewModel::setJustWatchRegion,
-          onToggleJustWatchShowRottenTomatoes = viewModel::toggleJustWatchShowRottenTomatoes,
-          onToggleJustWatchShowAgeRating = viewModel::toggleJustWatchShowAgeRating,
-          onToggleShowAllAppsSection = viewModel::toggleShowAllAppsSection,
-          onToggleShowAddAppTile = viewModel::toggleShowAddAppTile,
-          onToggleShowTileTitles = viewModel::toggleShowTileTitles,
-          onToggleShowTvInputsButton = viewModel::toggleShowTvInputsButton,
-          onOpenTvInputs = viewModel::openTvInputsDialog,
-          onCloseTvInputs = viewModel::closeTvInputsDialog,
-          onSelectTvInput = viewModel::selectTvInput,
-          onToggleLockHomeLayout = viewModel::toggleLockHomeLayout,
-          onSetHomeTileSize = viewModel::setHomeTileSize,
-          onToggleMinimalistDockMode = viewModel::toggleMinimalistDockMode,
-          onSetTileOpacity = viewModel::setTileOpacity,
-          onSetTileSpacing = viewModel::setTileSpacing,
-          onToggleShowClock = viewModel::toggleShowClock,
-          onToggleShowDate = viewModel::toggleShowDate,
-          onOpenAppInfo = viewModel::openAppInfo,
-          onUninstallApp = viewModel::uninstallApp,
-          onOpenWifi = viewModel::openWifiSettings,
-          onOpenBluetooth = viewModel::openBluetoothSettings,
-          onOpenSystemSettings = viewModel::openSystemSettings,
-          onOpenHomeSettings = ::requestDefaultHomeLauncher,
-          onOpenPlayStore = viewModel::openPlayStore,
-          onBackupConfig = {
-            runCatching { backupConfigLauncher.launch("horizon-tv-backup.json") }
-          },
-          onRestoreConfig = {
-            runCatching { restoreConfigLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
-          },
-          onResetToDefaults = viewModel::resetToDefaults,
-          onRefreshApps = viewModel::refreshApps,
-          onStartScreensaver = viewModel::startScreensaver,
-          onStopScreensaver = viewModel::stopScreensaver,
-          onToggleScreensaverEnabled = viewModel::toggleScreensaverEnabled,
-          onSetScreensaverMode = viewModel::setScreensaverMode,
-          onSetScreensaverTimeoutMinutes = viewModel::setScreensaverTimeoutMinutes,
-          onSetScreensaverIntervalSeconds = viewModel::setScreensaverIntervalSeconds,
-          onToggleScreensaverKenBurns = viewModel::toggleScreensaverKenBurns,
-          onToggleScreensaverShowClock = viewModel::toggleScreensaverShowClock,
-          onToggleScreensaverShowWeather = viewModel::toggleScreensaverShowWeather,
-          onToggleScreensaverShowTitle = viewModel::toggleScreensaverShowTitle,
-          onToggleScreensaverBurnInShift = viewModel::toggleScreensaverBurnInShift,
-          onSetScreensaverDimAlpha = viewModel::setScreensaverDimAlpha,
-          onToggleScreensaverAmbientCycle = viewModel::toggleScreensaverAmbientCycle,
-          onPickScreensaverPhotoFolder = {
-            runCatching { screensaverFolderPicker.launch(null) }
-          },
-          onPickScreensaverPhotos = {
-            runCatching { screensaverPhotosPicker.launch(arrayOf("image/*")) }
-          },
-          onClearScreensaverPhotos = viewModel::clearScreensaverPhotos,
-          onOpenSystemScreensaverSettings = ::openSystemScreensaverSettings,
-          onCheckForUpdates = { viewModel.checkForUpdates(manual = true) },
-          onLoadLatestRelease = viewModel::loadLatestReleaseInfoIfNeeded,
-          onSetUpdateCheckSchedule = viewModel::setUpdateCheckSchedule,
-          onOpenUpdateDialog = viewModel::openUpdateDialog,
-          onDismissUpdateDialog = viewModel::dismissUpdateDialog,
-          onInstallUpdate = viewModel::installAvailableUpdate,
+          onAppFocused = cb.onAppFocused,
+          onLaunchApp = cb.onLaunchApp,
+          onOpenAppMenu = cb.onOpenAppMenu,
+          onCloseAppMenu = cb.onCloseAppMenu,
+          onToggleAppInRow = cb.onToggleAppInRow,
+          onMoveAppInRow = cb.onMoveAppInRow,
+          onStartReordering = cb.onStartReordering,
+          onStopReordering = cb.onStopReordering,
+          onOpenRenameApp = cb.onOpenRenameApp,
+          onCloseRenameApp = cb.onCloseRenameApp,
+          onRenameApp = cb.onRenameApp,
+          onOpenCreateRow = cb.onOpenCreateRow,
+          onCloseCreateRow = cb.onCloseCreateRow,
+          onCreateRow = cb.onCreateRow,
+          onOpenRenameRow = cb.onOpenRenameRow,
+          onCloseRenameRow = cb.onCloseRenameRow,
+          onRenameRow = cb.onRenameRow,
+          onMoveRow = cb.onMoveRow,
+          onDeleteRow = cb.onDeleteRow,
+          onOpenAddAppsToRow = cb.onOpenAddAppsToRow,
+          onCloseAddAppsToRow = cb.onCloseAddAppsToRow,
+          onOpenTileOrder = cb.onOpenTileOrder,
+          onCloseTileOrder = cb.onCloseTileOrder,
+          onSortRowApps = cb.onSortRowApps,
+          onPickCustomIcon = cb.onPickCustomIcon,
+          onResetCustomIcon = cb.onResetCustomIcon,
+          onHideApp = cb.onHideApp,
+          onUnhideApp = cb.onUnhideApp,
+          onToggleAppPinLock = cb.onToggleAppPinLock,
+          onUnlockAppPin = cb.onUnlockAppPin,
+          onRequestSetPin = cb.onRequestSetPin,
+          onRequestChangePin = cb.onRequestChangePin,
+          onRequestRemovePin = cb.onRequestRemovePin,
+          onTogglePinProtectSettings = cb.onTogglePinProtectSettings,
+          onPinVerified = cb.onPinVerified,
+          onNewPinConfirmed = cb.onNewPinConfirmed,
+          onDismissPinPrompt = cb.onDismissPinPrompt,
+          onSelectFilter = cb.onSelectFilter,
+          onToggleSearch = cb.onToggleSearch,
+          onUpdateSearchQuery = cb.onUpdateSearchQuery,
+          onCommitRecentSearch = cb.onCommitRecentSearch,
+          onClearRecentSearches = cb.onClearRecentSearches,
+          onVoiceSearch = cb.onVoiceSearch,
+          onSelectSearchProvider = cb.onSelectSearchProvider,
+          onOpenJellyfinSearchItem = cb.onOpenJellyfinSearchItem,
+          onOpenStreamingOffer = cb.onOpenStreamingOffer,
+          onLoadMoreStreaming = cb.onLoadMoreStreaming,
+          onSearchExternalProvider = cb.onSearchExternalProvider,
+          onSearchYouTube = cb.onSearchYouTube,
+          onSearchWeb = cb.onSearchWeb,
+          onOpenSettings = cb.onOpenSettings,
+          onCloseSettings = cb.onCloseSettings,
+          onSelectTheme = cb.onSelectTheme,
+          onSelectAccent = cb.onSelectAccent,
+          onPickWallpaper = cb.onPickWallpaper,
+          onClearWallpaper = cb.onClearWallpaper,
+          onSetWallpaperDim = cb.onSetWallpaperDim,
+          onSelectWallpaperProvider = cb.onSelectWallpaperProvider,
+          onOpenJellyfinSetup = cb.onOpenJellyfinSetup,
+          onCloseJellyfinSetup = cb.onCloseJellyfinSetup,
+          onConnectJellyfin = cb.onConnectJellyfin,
+          onDisconnectJellyfin = cb.onDisconnectJellyfin,
+          onToggleJellyfinSlideshow = cb.onToggleJellyfinSlideshow,
+          onSetJellyfinInterval = cb.onSetJellyfinInterval,
+          onToggleJellyfinShowTitle = cb.onToggleJellyfinShowTitle,
+          onSetJellyfinMediaType = cb.onSetJellyfinMediaType,
+          onSelectJellyfinLibrary = cb.onSelectJellyfinLibrary,
+          onSetJellyfinBackdropLimit = cb.onSetJellyfinBackdropLimit,
+          onNextJellyfinBackdrop = cb.onNextJellyfinBackdrop,
+          onSetRedditSort = cb.onSetRedditSort,
+          onOpenAddSubreddit = cb.onOpenAddSubreddit,
+          onCloseAddSubreddit = cb.onCloseAddSubreddit,
+          onAddCustomSubreddit = cb.onAddCustomSubreddit,
+          onOpenWeatherSetup = cb.onOpenWeatherSetup,
+          onCloseWeatherSetup = cb.onCloseWeatherSetup,
+          onSearchWeatherLocations = cb.onSearchWeatherLocations,
+          onSelectWeatherLocation = cb.onSelectWeatherLocation,
+          onToggleWeatherEnabled = cb.onToggleWeatherEnabled,
+          onSetWeatherDays = cb.onSetWeatherDays,
+          onToggleWeatherShowForecast = cb.onToggleWeatherShowForecast,
+          onSetWeatherForecastSize = cb.onSetWeatherForecastSize,
+          onToggleWeatherUnit = cb.onToggleWeatherUnit,
+          onSetWeatherIconStyle = cb.onSetWeatherIconStyle,
+          onToggleWeatherBackdrop = cb.onToggleWeatherBackdrop,
+          onRefreshWeather = cb.onRefreshWeather,
+          onToggle24HourClock = cb.onToggle24HourClock,
+          onSetGridColumns = cb.onSetGridColumns,
+          onToggleShowNonLeanback = cb.onToggleShowNonLeanback,
+          onToggleShowSearchBar = cb.onToggleShowSearchBar,
+          onToggleSearchOpenDetailsPopup = cb.onToggleSearchOpenDetailsPopup,
+          onToggleSearchProvider = cb.onToggleSearchProvider,
+          onToggleJustWatchFilterServices = cb.onToggleJustWatchFilterServices,
+          onToggleJustWatchService = cb.onToggleJustWatchService,
+          onSelectAllJustWatchServices = cb.onSelectAllJustWatchServices,
+          onClearAllJustWatchServices = cb.onClearAllJustWatchServices,
+          onToggleJustWatchIncludeRentBuy = cb.onToggleJustWatchIncludeRentBuy,
+          onToggleJustWatchHideUnmatchedTitles = cb.onToggleJustWatchHideUnmatchedTitles,
+          onSetJustWatchRegion = cb.onSetJustWatchRegion,
+          onToggleJustWatchShowRottenTomatoes = cb.onToggleJustWatchShowRottenTomatoes,
+          onToggleJustWatchShowAgeRating = cb.onToggleJustWatchShowAgeRating,
+          onToggleShowAllAppsSection = cb.onToggleShowAllAppsSection,
+          onToggleShowAddAppTile = cb.onToggleShowAddAppTile,
+          onToggleShowTileTitles = cb.onToggleShowTileTitles,
+          onToggleShowTvInputsButton = cb.onToggleShowTvInputsButton,
+          onOpenTvInputs = cb.onOpenTvInputs,
+          onCloseTvInputs = cb.onCloseTvInputs,
+          onSelectTvInput = cb.onSelectTvInput,
+          onToggleLockHomeLayout = cb.onToggleLockHomeLayout,
+          onSetHomeTileSize = cb.onSetHomeTileSize,
+          onToggleMinimalistDockMode = cb.onToggleMinimalistDockMode,
+          onSetMinimalistDockMode = cb.onSetMinimalistDockMode,
+          onSet24HourClock = cb.onSet24HourClock,
+          onOpenSetupWizard = cb.onOpenSetupWizard,
+          onCompleteSetupWizard = cb.onCompleteSetupWizard,
+          onEnableRedditWallpapersFromWizard = cb.onEnableRedditWallpapersFromWizard,
+          onSetTileOpacity = cb.onSetTileOpacity,
+          onSetTileSpacing = cb.onSetTileSpacing,
+          onToggleShowClock = cb.onToggleShowClock,
+          onToggleShowDate = cb.onToggleShowDate,
+          onOpenAppInfo = cb.onOpenAppInfo,
+          onUninstallApp = cb.onUninstallApp,
+          onOpenWifi = cb.onOpenWifi,
+          onOpenBluetooth = cb.onOpenBluetooth,
+          onOpenSystemSettings = cb.onOpenSystemSettings,
+          onOpenHomeSettings = cb.onOpenHomeSettings,
+          onOpenPlayStore = cb.onOpenPlayStore,
+          onBackupConfig = cb.onBackupConfig,
+          onRestoreConfig = cb.onRestoreConfig,
+          onResetToDefaults = cb.onResetToDefaults,
+          onRefreshApps = cb.onRefreshApps,
+          onStartScreensaver = cb.onStartScreensaver,
+          onStopScreensaver = cb.onStopScreensaver,
+          onToggleScreensaverEnabled = cb.onToggleScreensaverEnabled,
+          onSetScreensaverMode = cb.onSetScreensaverMode,
+          onSetScreensaverTimeoutMinutes = cb.onSetScreensaverTimeoutMinutes,
+          onSetScreensaverIntervalSeconds = cb.onSetScreensaverIntervalSeconds,
+          onToggleScreensaverKenBurns = cb.onToggleScreensaverKenBurns,
+          onToggleScreensaverShowClock = cb.onToggleScreensaverShowClock,
+          onToggleScreensaverShowWeather = cb.onToggleScreensaverShowWeather,
+          onToggleScreensaverShowTitle = cb.onToggleScreensaverShowTitle,
+          onToggleScreensaverBurnInShift = cb.onToggleScreensaverBurnInShift,
+          onSetScreensaverDimAlpha = cb.onSetScreensaverDimAlpha,
+          onToggleScreensaverAmbientCycle = cb.onToggleScreensaverAmbientCycle,
+          onPickScreensaverPhotoFolder = cb.onPickScreensaverPhotoFolder,
+          onPickScreensaverPhotos = cb.onPickScreensaverPhotos,
+          onClearScreensaverPhotos = cb.onClearScreensaverPhotos,
+          onOpenSystemScreensaverSettings = cb.onOpenSystemScreensaverSettings,
+          onCheckForUpdates = cb.onCheckForUpdates,
+          onLoadLatestRelease = cb.onLoadLatestRelease,
+          onSetUpdateCheckSchedule = cb.onSetUpdateCheckSchedule,
+          onOpenUpdateDialog = cb.onOpenUpdateDialog,
+          onDismissUpdateDialog = cb.onDismissUpdateDialog,
+          onInstallUpdate = cb.onInstallUpdate,
           homeFocusTrigger = homeFocusTrigger,
-          appVersionName = runCatching {
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.1.0"
-          }.getOrDefault("2.1.0"),
-          appVersionCode = runCatching {
-            val info = packageManager.getPackageInfo(packageName, 0)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toInt() else {
-              @Suppress("DEPRECATION")
-              info.versionCode
-            }
-          }.getOrDefault(24),
+          appVersionName = cb.appVersionName,
+          appVersionCode = cb.appVersionCode,
         )
       }
     }
@@ -469,6 +457,190 @@ class MainActivity : ComponentActivity() {
     setIntent(intent)
     handleAdbBackupIntent(intent)
     homeFocusTrigger += 1
+  }
+
+  private class MainCallbacks(
+    activity: MainActivity,
+    vm: LauncherViewModel,
+  ) {
+    val onAppFocused = vm::onAppFocused
+    val onLaunchApp = vm::launchApp
+    val onOpenAppMenu = vm::openAppMenu
+    val onCloseAppMenu = vm::closeAppMenu
+    val onToggleAppInRow = vm::toggleAppInRow
+    val onMoveAppInRow = vm::moveAppInRow
+    val onStartReordering = vm::startReordering
+    val onStopReordering = vm::stopReordering
+    val onOpenRenameApp = vm::openRenameApp
+    val onCloseRenameApp = vm::closeRenameApp
+    val onRenameApp = vm::renameApp
+    val onOpenCreateRow = vm::openCreateRowDialog
+    val onCloseCreateRow = vm::closeCreateRowDialog
+    val onCreateRow: (String) -> Unit = { title -> vm.createRow(title, openAppPickerAfter = true) }
+    val onOpenRenameRow = vm::openRenameRowDialog
+    val onCloseRenameRow = vm::closeRenameRowDialog
+    val onRenameRow = vm::renameRow
+    val onMoveRow = vm::moveRow
+    val onDeleteRow = vm::deleteRow
+    val onOpenAddAppsToRow = vm::openAddAppsToRow
+    val onCloseAddAppsToRow = vm::closeAddAppsToRow
+    val onOpenTileOrder = vm::openTileOrderDialog
+    val onCloseTileOrder = vm::closeTileOrderDialog
+    val onSortRowApps = vm::sortRowAppsAlphabetically
+    val onPickCustomIcon: (String) -> Unit = { packageName ->
+      activity.pendingIconPackage = packageName
+      runCatching { activity.customIconPicker.launch(arrayOf("image/*")) }
+    }
+    val onResetCustomIcon = vm::resetCustomAppIcon
+    val onHideApp = vm::hideApp
+    val onUnhideApp = vm::unhideApp
+    val onToggleAppPinLock = vm::toggleAppPinLock
+    val onUnlockAppPin = vm::unlockAppPin
+    val onRequestSetPin = vm::requestSetPin
+    val onRequestChangePin = vm::requestChangePin
+    val onRequestRemovePin = vm::requestRemovePin
+    val onTogglePinProtectSettings = vm::togglePinProtectSettings
+    val onPinVerified = vm::onPinVerified
+    val onNewPinConfirmed = vm::onNewPinConfirmed
+    val onDismissPinPrompt = vm::dismissPinPrompt
+    val onSelectFilter = vm::setFilter
+    val onToggleSearch = vm::toggleSearch
+    val onUpdateSearchQuery = vm::updateSearchQuery
+    val onCommitRecentSearch = vm::commitRecentSearch
+    val onClearRecentSearches = vm::clearRecentSearches
+    val onVoiceSearch = activity::launchVoiceSearch
+    val onSelectSearchProvider = vm::setSearchProvider
+    val onOpenJellyfinSearchItem = vm::openJellyfinSearchItem
+    val onOpenStreamingOffer = vm::openStreamingOffer
+    val onLoadMoreStreaming = vm::loadMoreStreamingResults
+    val onSearchExternalProvider = vm::openExternalProviderSearch
+    val onSearchYouTube = vm::openYouTubeSearch
+    val onSearchWeb = vm::openWebSearch
+    val onOpenSettings = vm::openSettings
+    val onCloseSettings = vm::closeSettings
+    val onSelectTheme = vm::selectTheme
+    val onSelectAccent = vm::selectAccent
+    val onPickWallpaper: () -> Unit = {
+      runCatching { activity.wallpaperPicker.launch(arrayOf("image/*")) }
+    }
+    val onClearWallpaper: () -> Unit = { vm.setCustomWallpaper(null) }
+    val onSetWallpaperDim = vm::setWallpaperDimAlpha
+    val onSelectWallpaperProvider = vm::selectWallpaperProvider
+    val onOpenJellyfinSetup: () -> Unit = { vm.openJellyfinSetup() }
+    val onCloseJellyfinSetup = vm::closeJellyfinSetup
+    val onConnectJellyfin: (String, String?, String?, String?) -> Unit = { url, key, user, pass ->
+      vm.connectJellyfin(url, key, user, pass)
+    }
+    val onDisconnectJellyfin: () -> Unit = { vm.disconnectJellyfin() }
+    val onToggleJellyfinSlideshow = vm::toggleJellyfinSlideshow
+    val onSetJellyfinInterval = vm::setJellyfinInterval
+    val onToggleJellyfinShowTitle = vm::toggleJellyfinShowTitle
+    val onSetJellyfinMediaType = vm::setJellyfinMediaType
+    val onSelectJellyfinLibrary = vm::selectJellyfinLibrary
+    val onSetJellyfinBackdropLimit = vm::setJellyfinBackdropLimit
+    val onNextJellyfinBackdrop = vm::nextJellyfinBackdrop
+    val onSetRedditSort = vm::setRedditSort
+    val onOpenAddSubreddit = vm::openAddSubredditDialog
+    val onCloseAddSubreddit = vm::closeAddSubredditDialog
+    val onAddCustomSubreddit = vm::addCustomSubreddit
+    val onOpenWeatherSetup = vm::openWeatherSetup
+    val onCloseWeatherSetup = vm::closeWeatherSetup
+    val onSearchWeatherLocations = vm::searchWeatherLocations
+    val onSelectWeatherLocation = vm::selectWeatherLocation
+    val onToggleWeatherEnabled = vm::toggleWeatherEnabled
+    val onSetWeatherDays = vm::setWeatherDays
+    val onToggleWeatherShowForecast = vm::toggleWeatherShowForecast
+    val onSetWeatherForecastSize = vm::setWeatherForecastSize
+    val onToggleWeatherUnit = vm::toggleWeatherUnit
+    val onSetWeatherIconStyle = vm::setWeatherIconStyle
+    val onToggleWeatherBackdrop = vm::toggleWeatherBackdrop
+    val onRefreshWeather = vm::refreshWeather
+    val onToggle24HourClock = vm::toggle24HourClock
+    val onSetGridColumns = vm::setGridColumns
+    val onToggleShowNonLeanback = vm::toggleShowNonLeanbackApps
+    val onToggleShowSearchBar = vm::toggleShowSearchBar
+    val onToggleSearchOpenDetailsPopup = vm::toggleSearchOpenDetailsPopup
+    val onToggleSearchProvider = vm::toggleSearchProvider
+    val onToggleJustWatchFilterServices = vm::toggleJustWatchFilterServices
+    val onToggleJustWatchService = vm::toggleJustWatchService
+    val onSelectAllJustWatchServices = vm::selectAllJustWatchServices
+    val onClearAllJustWatchServices = vm::clearAllJustWatchServices
+    val onToggleJustWatchIncludeRentBuy = vm::toggleJustWatchIncludeRentBuy
+    val onToggleJustWatchHideUnmatchedTitles = vm::toggleJustWatchHideUnmatchedTitles
+    val onSetJustWatchRegion = vm::setJustWatchRegion
+    val onToggleJustWatchShowRottenTomatoes = vm::toggleJustWatchShowRottenTomatoes
+    val onToggleJustWatchShowAgeRating = vm::toggleJustWatchShowAgeRating
+    val onToggleShowAllAppsSection = vm::toggleShowAllAppsSection
+    val onToggleShowAddAppTile = vm::toggleShowAddAppTile
+    val onToggleShowTileTitles = vm::toggleShowTileTitles
+    val onToggleShowTvInputsButton = vm::toggleShowTvInputsButton
+    val onOpenTvInputs = vm::openTvInputsDialog
+    val onCloseTvInputs = vm::closeTvInputsDialog
+    val onSelectTvInput = vm::selectTvInput
+    val onToggleLockHomeLayout = vm::toggleLockHomeLayout
+    val onSetHomeTileSize = vm::setHomeTileSize
+    val onToggleMinimalistDockMode = vm::toggleMinimalistDockMode
+    val onSetMinimalistDockMode = vm::setMinimalistDockMode
+    val onSet24HourClock = vm::set24HourClock
+    val onOpenSetupWizard = vm::openSetupWizard
+    val onCompleteSetupWizard = vm::completeSetupWizard
+    val onEnableRedditWallpapersFromWizard = vm::enableRedditWallpapersFromWizard
+    val onSetTileOpacity = vm::setTileOpacity
+    val onSetTileSpacing = vm::setTileSpacing
+    val onToggleShowClock = vm::toggleShowClock
+    val onToggleShowDate = vm::toggleShowDate
+    val onOpenAppInfo = vm::openAppInfo
+    val onUninstallApp = vm::uninstallApp
+    val onOpenWifi = vm::openWifiSettings
+    val onOpenBluetooth = vm::openBluetoothSettings
+    val onOpenSystemSettings = vm::openSystemSettings
+    val onOpenHomeSettings = activity::requestDefaultHomeLauncher
+    val onOpenPlayStore = vm::openPlayStore
+    val onBackupConfig: () -> Unit = {
+      runCatching { activity.backupConfigLauncher.launch("horizon-tv-backup.json") }
+    }
+    val onRestoreConfig: () -> Unit = {
+      runCatching { activity.restoreConfigLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }
+    }
+    val onResetToDefaults = vm::resetToDefaults
+    val onRefreshApps = vm::refreshApps
+    val onStartScreensaver = vm::startScreensaver
+    val onStopScreensaver = vm::stopScreensaver
+    val onToggleScreensaverEnabled = vm::toggleScreensaverEnabled
+    val onSetScreensaverMode = vm::setScreensaverMode
+    val onSetScreensaverTimeoutMinutes = vm::setScreensaverTimeoutMinutes
+    val onSetScreensaverIntervalSeconds = vm::setScreensaverIntervalSeconds
+    val onToggleScreensaverKenBurns = vm::toggleScreensaverKenBurns
+    val onToggleScreensaverShowClock = vm::toggleScreensaverShowClock
+    val onToggleScreensaverShowWeather = vm::toggleScreensaverShowWeather
+    val onToggleScreensaverShowTitle = vm::toggleScreensaverShowTitle
+    val onToggleScreensaverBurnInShift = vm::toggleScreensaverBurnInShift
+    val onSetScreensaverDimAlpha = vm::setScreensaverDimAlpha
+    val onToggleScreensaverAmbientCycle = vm::toggleScreensaverAmbientCycle
+    val onPickScreensaverPhotoFolder: () -> Unit = {
+      runCatching { activity.screensaverFolderPicker.launch(null) }
+    }
+    val onPickScreensaverPhotos: () -> Unit = {
+      runCatching { activity.screensaverPhotosPicker.launch(arrayOf("image/*")) }
+    }
+    val onClearScreensaverPhotos = vm::clearScreensaverPhotos
+    val onOpenSystemScreensaverSettings = activity::openSystemScreensaverSettings
+    val onCheckForUpdates: () -> Unit = { vm.checkForUpdates(manual = true) }
+    val onLoadLatestRelease = vm::loadLatestReleaseInfoIfNeeded
+    val onSetUpdateCheckSchedule = vm::setUpdateCheckSchedule
+    val onOpenUpdateDialog = vm::openUpdateDialog
+    val onDismissUpdateDialog = vm::dismissUpdateDialog
+    val onInstallUpdate = vm::installAvailableUpdate
+    val appVersionName: String = runCatching {
+      activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "2.5.36"
+    }.getOrDefault("2.5.36")
+    val appVersionCode: Int = runCatching {
+      val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toInt() else {
+        @Suppress("DEPRECATION")
+        info.versionCode
+      }
+    }.getOrDefault(80)
   }
 
   companion object {

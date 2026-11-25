@@ -97,6 +97,7 @@ import com.horizontv.launcher.ui.components.AppActionDialog
 import com.horizontv.launcher.ui.components.AppGridTile
 import com.horizontv.launcher.ui.components.AppUpdateDialog
 import com.horizontv.launcher.ui.components.PinDialog
+import com.horizontv.launcher.ui.components.SetupWizardDialog
 import com.horizontv.launcher.ui.components.FavoriteBannerCard
 import com.horizontv.launcher.ui.components.JellyfinSetupDialog
 import com.horizontv.launcher.ui.components.LauncherTopBar
@@ -159,6 +160,8 @@ fun LauncherScreen(
   onSelectFilter: (AppFilter) -> Unit,
   onToggleSearch: () -> Unit,
   onUpdateSearchQuery: (String) -> Unit,
+  onCommitRecentSearch: (String) -> Unit = {},
+  onClearRecentSearches: () -> Unit = {},
   onVoiceSearch: () -> Unit = {},
   onSelectSearchProvider: (SearchProviderFilter) -> Unit,
   onOpenJellyfinSearchItem: (JellyfinSearchItem) -> Unit,
@@ -227,6 +230,11 @@ fun LauncherScreen(
   onToggleLockHomeLayout: () -> Unit,
   onSetHomeTileSize: (String) -> Unit,
   onToggleMinimalistDockMode: () -> Unit = {},
+  onSetMinimalistDockMode: (Boolean) -> Unit = {},
+  onSet24HourClock: (Boolean) -> Unit = {},
+  onOpenSetupWizard: () -> Unit = {},
+  onCompleteSetupWizard: () -> Unit = {},
+  onEnableRedditWallpapersFromWizard: () -> Unit = {},
   onSetTileOpacity: (Float) -> Unit = {},
   onSetTileSpacing: (String) -> Unit = {},
   onToggleShowClock: () -> Unit,
@@ -1097,9 +1105,9 @@ fun LauncherScreen(
     if (state.isAddingSubreddit) {
       RenameTextDialog(
         title = "Add Custom Subreddit",
-        subtitle = "Enter any subreddit name (e.g. ArchitecturePorn, NaturePorn, Cyberpunk)",
+        subtitle = "Enter any subreddit name (e.g. MostBeautiful, MinimalWallpaper, Cyberpunk)",
         initialValue = "",
-        placeholder = "EarthPorn",
+        placeholder = "MostBeautiful",
         resetLabel = "Clear",
         accent = accent,
         onDismiss = onCloseAddSubreddit,
@@ -1145,6 +1153,7 @@ fun LauncherScreen(
         showRottenTomatoes = state.settings.justWatchShowRottenTomatoes,
         showAgeRating = state.settings.justWatchShowAgeRating,
         openDetailsPopup = state.settings.searchOpenDetailsPopup,
+        recentSearches = state.settings.recentSearches,
         externalSearchProviders = enabledExternalProviders,
         appsProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_APPS),
         jellyfinProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JELLYFIN),
@@ -1153,6 +1162,8 @@ fun LauncherScreen(
         webProviderEnabled = state.settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_WEB),
         accent = accent,
         onQueryChange = onUpdateSearchQuery,
+        onCommitRecentSearch = onCommitRecentSearch,
+        onClearRecentSearches = onClearRecentSearches,
         onVoiceSearch = onVoiceSearch,
         onSelectProvider = onSelectSearchProvider,
         onLaunchApp = onLaunchApp,
@@ -1248,6 +1259,7 @@ fun LauncherScreen(
         onRequestRemovePin = onRequestRemovePin,
         onTogglePinProtectSettings = onTogglePinProtectSettings,
         onUnlockAppPin = onUnlockAppPin,
+        onOpenSetupWizard = onOpenSetupWizard,
         onOpenHomeSettings = onOpenHomeSettings,
         onOpenPlayStore = onOpenPlayStore,
         onBackupConfig = onBackupConfig,
@@ -1313,6 +1325,25 @@ fun LauncherScreen(
         onPinVerified = onPinVerified,
         onNewPinConfirmed = onNewPinConfirmed,
         onDismiss = onDismissPinPrompt,
+      )
+    }
+
+    if (state.isSetupWizardOpen) {
+      SetupWizardDialog(
+        settings = state.settings,
+        allApps = state.allVisibleApps,
+        isDefaultHome = state.isDefaultHome,
+        accent = accent,
+        onSetMinimalistDock = onSetMinimalistDockMode,
+        onSet24HourClock = onSet24HourClock,
+        onOpenHomeSettings = onOpenHomeSettings,
+        onSelectTheme = onSelectTheme,
+        onEnableRedditWallpapers = onEnableRedditWallpapersFromWizard,
+        onSetJustWatchRegion = onSetJustWatchRegion,
+        onToggleFavoriteApp = { pkg ->
+          onToggleAppInRow(state.settings.primaryRow.id, pkg)
+        },
+        onFinish = onCompleteSetupWizard,
       )
     }
 

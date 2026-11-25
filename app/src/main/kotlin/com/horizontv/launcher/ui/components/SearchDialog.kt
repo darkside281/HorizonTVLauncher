@@ -38,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Movie
@@ -110,6 +111,7 @@ fun UniversalSearchDialog(
   showRottenTomatoes: Boolean = true,
   showAgeRating: Boolean = true,
   openDetailsPopup: Boolean = true,
+  recentSearches: List<String> = emptyList(),
   externalSearchProviders: List<ExternalSearchProvider>,
   appsProviderEnabled: Boolean,
   jellyfinProviderEnabled: Boolean,
@@ -118,6 +120,8 @@ fun UniversalSearchDialog(
   webProviderEnabled: Boolean,
   accent: AccentPreset,
   onQueryChange: (String) -> Unit,
+  onCommitRecentSearch: (String) -> Unit = {},
+  onClearRecentSearches: () -> Unit = {},
   onVoiceSearch: () -> Unit = {},
   onSelectProvider: (SearchProviderFilter) -> Unit,
   onLaunchApp: (AppInfo) -> Unit,
@@ -169,6 +173,9 @@ fun UniversalSearchDialog(
   }
 
   fun dismissKeyboardAndMoveToResults() {
+    if (query.trim().length >= 2) {
+      onCommitRecentSearch(query)
+    }
     focusManager.clearFocus(force = true)
     hideDialogKeyboard()
     val moved = runCatching { firstFilterRequester.requestFocus() }.isSuccess
@@ -479,6 +486,97 @@ fun UniversalSearchDialog(
               this
             }
 
+            // 0. Recent Searches (shown before typing so Search is immediately useful)
+            if (query.isBlank()) {
+              if (recentSearches.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                  ) {
+                    Row(
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      Icon(
+                        imageVector = Icons.Rounded.History,
+                        contentDescription = null,
+                        tint = accent.primary,
+                        modifier = Modifier.size(16.dp),
+                      )
+                      Text(
+                        text = "RECENT SEARCHES",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White.copy(alpha = 0.65f),
+                      )
+                      Text(
+                        text = "• ${recentSearches.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.45f),
+                      )
+                    }
+                    var isClearFocused by remember { mutableStateOf(false) }
+                    Surface(
+                      modifier = Modifier
+                        .topResultUpModifier(true)
+                        .onFocusChanged { isClearFocused = it.isFocused }
+                        .clickable(onClick = onClearRecentSearches),
+                      shape = RoundedCornerShape(50),
+                      color = if (isClearFocused) accent.primary else Color.White.copy(alpha = 0.08f),
+                      border = if (isClearFocused) {
+                        BorderStroke(2.dp, Color.White)
+                      } else {
+                        BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
+                      },
+                    ) {
+                      Text(
+                        text = "Clear All",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (isClearFocused) accent.onPrimary else Color.White.copy(alpha = 0.78f),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                      )
+                    }
+                  }
+
+                  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    recentSearches.chunked(2).forEachIndexed { rowIdx, pair ->
+                      Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                      ) {
+                        pair.forEach { term ->
+                          ExternalProviderButton(
+                            icon = Icons.Rounded.History,
+                            label = term,
+                            accent = accent,
+                            onClick = {
+                              onQueryChange(term)
+                              onCommitRecentSearch(term)
+                              hideDialogKeyboard()
+                              runCatching { firstFilterRequester.requestFocus() }
+                            },
+                            modifier = Modifier
+                              .weight(1f)
+                              .topResultUpModifier(rowIdx == 0),
+                          )
+                        }
+                        if (pair.size == 1) {
+                          Spacer(modifier = Modifier.weight(1f))
+                        }
+                      }
+                    }
+                  }
+                }
+              } else {
+                Text(
+                  text = "Type a movie, TV show, or app name—or press the microphone button for voice search.",
+                  style = MaterialTheme.typography.bodyMedium,
+                  color = Color.White.copy(alpha = 0.56f),
+                )
+              }
+            }
+
             // 1. Where to Watch (JustWatch UK) — live streaming availability across Netflix, Prime, Disney+, etc.
             if (showStreaming && query.trim().length >= 2) {
               Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -548,10 +646,14 @@ fun UniversalSearchDialog(
                             showAgeRating = showAgeRating,
                             openDetailsPopup = openDetailsPopup,
                             onOpenDetails = {
+                              onCommitRecentSearch(query)
                               hideDialogKeyboard()
                               detailsItemId = item.id
                             },
-                            onOpenOffer = onOpenStreamingOffer,
+                            onOpenOffer = { offer ->
+                              onCommitRecentSearch(query)
+                              onOpenStreamingOffer(offer)
+                            },
                             upTarget = if (idx == 0) firstFilterRequester else null,
                             onNavigateUp = if (idx == 0) ({ moveFocusUpToFilters() }) else null,
                           )

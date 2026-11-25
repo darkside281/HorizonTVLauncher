@@ -555,8 +555,10 @@ data class LauncherSettings(
   val justWatchShowRottenTomatoes: Boolean = true,
   val justWatchShowAgeRating: Boolean = true,
   val searchOpenDetailsPopup: Boolean = true,
+  val recentSearches: List<String> = emptyList(),
   val gridColumns: Int = 5,
   val hasInitializedFavorites: Boolean = false,
+  val hasCompletedSetupWizard: Boolean = false,
   val screensaverEnabled: Boolean = false,
   val screensaverMode: String = ScreensaverMode.WALLPAPER_ARTWORK.id,
   val screensaverTimeoutMinutes: Int = 5,
@@ -733,6 +735,34 @@ data class LauncherSettings(
       "ImaginaryLandscapes",
       "WidescreenWallpaper",
     )
+
+    fun friendlyRedditLabel(subreddit: String): String {
+      val clean = subreddit.trim().removePrefix("r/").removePrefix("/r/")
+      return when (clean.lowercase()) {
+        "earthporn" -> "Earth & Nature"
+        "spaceporn" -> "Space & Cosmos"
+        "cityporn" -> "Cityscapes"
+        "skyporn" -> "Skies & Sunsets"
+        "natureporn" -> "Nature"
+        "architectureporn" -> "Architecture"
+        "waterporn" -> "Oceans & Water"
+        "wallpapers" -> "Wallpapers"
+        "wallpaper" -> "4K Wallpaper"
+        "minimalwallpaper" -> "Minimalist"
+        "imaginarylandscapes" -> "Sci-Fi & Fantasy"
+        "widescreenwallpaper" -> "Widescreen"
+        "mostbeautiful" -> "Scenic Places"
+        "itookapicture" -> "Photography"
+        else -> {
+          val stripped = clean.replace(Regex("(?i)porn$"), "").trim()
+          if (stripped.isNotEmpty() && stripped.length != clean.length) {
+            stripped
+          } else {
+            clean.ifEmpty { "Reddit" }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -808,6 +838,7 @@ data class LauncherUiState(
   val orderingRowId: String? = null,
   val reorderingTarget: ReorderTarget? = null,
   val isSettingsOpen: Boolean = false,
+  val isSetupWizardOpen: Boolean = false,
   val setupProviderDialog: MediaWallpaperProvider? = null,
   val isAddingSubreddit: Boolean = false,
   val isTestingJellyfin: Boolean = false,
