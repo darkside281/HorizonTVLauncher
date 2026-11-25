@@ -8,6 +8,25 @@
   A clean, fast, ad-free <strong>Android TV / Nvidia Shield home launcher</strong> built with Jetpack Compose — designed for living-room full-bleed artwork, crisp D-pad navigation, universal streaming &amp; library search, and effortless phone/PC remote editing.
 </p>
 
+<p align="center">
+  <strong>100% Free &amp; Open Source</strong> &nbsp;·&nbsp; <strong>No Paywalls or Pro Tiers</strong> &nbsp;·&nbsp; <strong>No Ads or Telemetry</strong> &nbsp;·&nbsp; <strong>Zero Extra Permissions</strong> &nbsp;·&nbsp; <strong>~2.3 MB APK</strong>
+</p>
+
+---
+
+## Everything Included — Free, Out of the Box
+
+Every feature in Horizon TV Launcher is unlocked from day one with no subscriptions, no license keys, and no tracking:
+
+- **Continue Watching / "Up Next" Row** — One-click resume for in-progress movies and next episodes from your **Jellyfin**, **Plex**, or **Emby** server, with progress bars and remaining time.
+- **Custom Wallpapers Everywhere** — Local images, multi-photo folders, **SMB network shares (`smb://...`)**, **Jellyfin / Plex / Emby**, **TMDB**, **Reddit**, **6 Ambient Themes**, and **Ken Burns slow motion**.
+- **Unlimited Custom Rows & App Folders** — Organize apps into custom rows, **2×2 preview App Folders**, and **16:9 Banner / 1:1 Square / 2:3 Poster** tile shapes.
+- **Full Visual Customization** — Minimalist Bottom-Dock mode, custom **Clock styles & typography**, corner roundness, focus glow styles, tile opacity, and custom PNG/JPG app icons.
+- **Universal Media & Voice Search** — Search streaming availability across 8 regions, your own Jellyfin library, and installed apps — with zero-permission system voice search.
+- **Phone / PC Local Web Companion** — Scan a QR code to drag-and-drop reorder tiles, batch-upload wallpapers, paste API keys, and configure every setting from your browser.
+- **Built-In Screensaver & Live Weather** — Android System `DreamService` with OLED burn-in shift and Open-Meteo 7-day forecasts (no API key required).
+- **Parental PIN Lock & Portable Backup/Restore** — Lock settings or individual apps behind a 4-digit PIN, and export/import your entire setup as JSON.
+
 ---
 
 ## Screenshots
@@ -37,6 +56,7 @@ Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shi
 ## What It Can Do
 
 ### Home Screen & Layout
+- **Continue Watching / "Up Next" Row (Jellyfin, Plex & Emby)**: Optional row (under **Customize → Home → Rows**) that reuses your existing media server connection to display in-progress movies and next episodes with 16:9 resume cards, episode/movie badges, time-remaining pills, progress bars, and one-click resume.
 - **Custom Home Rows, App Folders & Per-Row Tile Shapes**: Create, rename, reorder, delete, sort A–Z, and lock custom app rows — group related apps into **App Folders (2×2 preview tiles)** with frosted popup grids, and switch any individual row between **16:9 Banner**, **1:1 Square**, or **2:3 Poster** tiles.
 - **Minimalist Bottom-Dock Mode**: Clean frosted bottom dock that keeps your wallpaper artwork front and center.
 - **Flexible Tile Styling**: Choose **Small / Medium / Large** tile sizes, **Compact / Normal / Wide** tile spacing, **40%–100%** unfocused tile opacity, **Sharp / Rounded / Soft** corner roundness, **Accent Glow / Crisp Outline / Zoom Only / Soft Shadow** focus styles, toggle **App Titles Under Tiles**, rename apps, and assign custom PNG/JPG app icons.
@@ -56,12 +76,13 @@ Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shi
 
 ### Local Web Companion (Phone / PC Browser)
 - **QR Code Wi-Fi Remote Editor**: Start a temporary local HTTP server from **Customize → Launcher & Apps → Local Web Companion (Phone / PC)…** protected by a fresh 4-digit session code (auto-filled when scanning the QR code).
-- **Edit Live From Your Phone or Laptop**:
-  - **Home & Dock**: Rearrange dock/row tiles with real TV app icons and friendly names, add any installed Android app, sort A–Z, clean up uninstalled backup apps, and manage rows & layout toggles.
-  - **Wallpapers & Icons**: Switch Ambient Themes & Accent colors live, configure Live Slideshow Wallpapers, upload or clear a custom Home wallpaper, and upload custom app icons.
+- **Full 6-Tab Browser Control Center**:
+  - **Home & Dock**: Drag-and-drop reorder tiles (mouse & mobile touch) with real TV app icons and friendly names, add any installed Android app, sort A–Z, clean up uninstalled backup apps, and manage rows, folders, clock & tile styles.
+  - **Search & Services**: Configure your JustWatch region, subscribed streaming services, Prime Video Channels, and search preferences.
+  - **Wallpapers & Apps**: Switch Ambient Themes & Accent colors live, configure Live Slideshow Wallpapers, batch-upload photos to your Local Album, upload custom Home wallpapers, and upload custom app icons.
   - **Screensaver & Weather**: Search and set your Weather location from your phone/PC keyboard and adjust all Weather & Screensaver settings.
-  - **Servers & API Keys**: Paste Jellyfin, Plex, Emby, and TMDB URLs and API keys directly from your clipboard.
-  - **Backup & Restore**: Download or upload/restore your full Horizon JSON backup right from the browser.
+  - **Servers & API Keys**: Paste Jellyfin, Plex, Emby, SMB share, and TMDB URLs and credentials directly from your clipboard.
+  - **Security & Backup**: Manage Parental Controls PINs and download or upload/restore your full Horizon JSON backup right from the browser.
 
 ### Live Wallpapers (Per-Service Configs)
 - Supports **Jellyfin**, **Plex**, **Emby**, **TMDB**, **Reddit** (curated family-friendly categories & custom feeds), **Local Folder & Web-Uploaded Photo Album**, **SMB Network Shares (`smb://...`)**, **Single Custom Image**, and **6 built-in Ambient Gradient Themes**.
@@ -106,10 +127,10 @@ Horizon TV Launcher targets **Android 7.0+ (API 24)** up to **Android 16**, requ
 
 ## Installation
 
-1. Download the latest APK (`HorizonTVLauncher-v2.5.48.apk`) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+1. Download the latest APK (`HorizonTVLauncher-v2.5.50.apk`, ~2.3 MB R8-optimized) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 2. Sideload it onto your Android TV / Google TV device (via USB, file manager, or ADB):
    ```bash
-   adb install -r HorizonTVLauncher-v2.5.48.apk
+   adb install -r HorizonTVLauncher-v2.5.50.apk
    ```
 3. Open **Horizon TV Launcher** (follow the 4-step Setup Wizard, or open **Customize → Launcher & Apps → Set as Default Home**).
    - **Android TV (Nvidia Shield, Sony, etc.)** — optionally disable the stock launcher via ADB so the Home button always opens Horizon:
