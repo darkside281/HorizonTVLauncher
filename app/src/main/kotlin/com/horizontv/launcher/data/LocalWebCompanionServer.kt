@@ -2,6 +2,7 @@ package com.horizontv.launcher.data
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import com.horizontv.launcher.model.AppFolder
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.ClockFontStyle
 import com.horizontv.launcher.model.ClockFontWeight
@@ -67,6 +68,9 @@ interface WebCompanionBridge {
   fun searchWeatherLocationsSync(query: String): List<WeatherLocation>
   fun selectWeatherLocation(location: WeatherLocation)
   fun saveUploadedWallpaper(bytes: ByteArray): Boolean
+  fun saveAlbumPhoto(bytes: ByteArray, filename: String?): Boolean
+  fun getAlbumPhotoCount(): Int
+  fun clearLocalAlbum()
   fun saveUploadedAppIcon(packageName: String, bytes: ByteArray): Boolean
   fun onCompanionActivity(message: String)
 }
@@ -438,6 +442,23 @@ class LocalWebCompanionServer(
           }
         }
 
+        method == "POST" && path == "/api/album/upload" -> {
+          val name = queryParams["name"]
+          val ok = bodyBytes.isNotEmpty() && bridge.saveAlbumPhoto(bodyBytes, name)
+          if (ok) {
+            bridge.onCompanionActivity("Added photo to Local Folder wallpaper album")
+            writeJson(output, 200, JSONObject().put("ok", true).put("count", bridge.getAlbumPhotoCount()))
+          } else {
+            writeJson(output, 400, JSONObject().put("error", "Could not save album photo"))
+          }
+        }
+
+        method == "POST" && path == "/api/album/clear" -> {
+          bridge.clearLocalAlbum()
+          bridge.onCompanionActivity("Cleared Local Folder wallpaper album")
+          writeJson(output, 200, JSONObject().put("ok", true))
+        }
+
         method == "POST" && path == "/api/upload-icon" -> {
           val pkg = queryParams["pkg"].orEmpty().trim()
           val ok = pkg.isNotEmpty() && bodyBytes.isNotEmpty() && bridge.saveUploadedAppIcon(pkg, bodyBytes)
@@ -460,24 +481,38 @@ class LocalWebCompanionServer(
     val installedByPkg = allInstalled.associateBy { it.packageName }
 
     val rowsArr = JSONArray()
+    val foldersById = s.folders.associateBy { it.id }
     s.rows.forEach { r ->
       val pkgsArr = JSONArray()
       val itemsArr = JSONArray()
       r.packageNames.forEach { pkg ->
         pkgsArr.put(pkg)
-        val installedApp = installedByPkg[pkg]
-        val friendlyLabel = s.customLabels[pkg]?.takeIf { it.isNotBlank() }
-          ?: installedApp?.label
-          ?: friendlyPackageName(pkg)
-        itemsArr.put(
-          JSONObject().apply {
-            put("packageName", pkg)
-            put("label", friendlyLabel)
-            put("installed", installedApp != null)
-          },
-        )
+        if (AppFolder.isFolderToken(pkg)) {
+          val folder = foldersById[AppFolder.folderIdFromToken(pkg)]
+          itemsArr.put(
+            JSONObject().apply {
+              put("packageName", pkg)
+              put("label", "📁 ${folder?.title ?: "Folder"}")
+              put("installed", folder != null)
+            },
+          )
+        } else {
+          val installedApp = installedByPkg[pkg]
+          val friendlyLabel = s.customLabels[pkg]?.takeIf { it.isNotBlank() }
+            ?: installedApp?.label
+            ?: friendlyPackageName(pkg)
+          itemsArr.put(
+            JSONObject().apply {
+              put("packageName", pkg)
+              put("label", friendlyLabel)
+              put("installed", installedApp != null)
+            },
+          )
+        }
       }
-      val installedCount = r.packageNames.count { it in installedByPkg }
+      val installedCount = r.packageNames.count {
+        it in installedByPkg || (AppFolder.isFolderToken(it) && AppFolder.folderIdFromToken(it) in foldersById)
+      }
       rowsArr.put(
         JSONObject().apply {
           put("id", r.id)
@@ -605,6 +640,10 @@ class LocalWebCompanionServer(
       put("embyServerUrl", s.embyServerUrl)
       put("embyApiKey", s.embyApiKey)
       put("tmdbApiKey", s.tmdbApiKey)
+      put("smbShareUrl", s.smbShareUrl)
+      put("smbUsername", s.smbUsername)
+      put("smbPassword", s.smbPassword)
+      put("localAlbumCount", bridge.getAlbumPhotoCount())
 
       // Wallpapers & Theme
       put("themeId", s.themeId)
@@ -1084,6 +1123,16 @@ class LocalWebCompanionServer(
       </div>
 
       <div class="card">
+        <h2>Local Folder Photo Album (Batch Upload)</h2>
+        <div class="sub">Upload multiple photos from your phone or PC to rotate as your Home wallpaper! Uploaded album photos: <span id="albumCountBadge" class="pill">0</span></div>
+        <div class="row" style="margin-top:12px;">
+          <input id="albumFiles" type="file" accept="image/*" multiple />
+          <button class="btn" onclick="uploadAlbumPhotos()">Upload Photos &amp; Start Slideshow</button>
+          <button id="clearAlbumBtn" class="btn danger hidden" onclick="clearAlbumPhotos()">Clear Album</button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Custom Home Wallpaper</h2>
         <div class="sub">Upload a 16:9 JPG or PNG from your phone or PC to set immediately on your TV.</div>
         <div class="row" style="margin-top:12px;">
@@ -1162,10 +1211,15 @@ class LocalWebCompanionServer(
         <option value="plex">Plex Media Server</option>
         <option value="emby">Emby Server</option>
         <option value="tmdb">TMDB API Key</option>
+        <option value="smb">SMB Network Share (NAS / Windows)</option>
       </select>
       <div id="srvUrlWrap">
-        <label>Server URL</label>
+        <label id="srvUrlLabel">Server URL</label>
         <input id="srvUrl" type="text" placeholder="http://192.168.0.50:8096" />
+      </div>
+      <div id="smbUserWrap" class="hidden">
+        <label>SMB Username (Optional — leave blank for Guest)</label>
+        <input id="smbUser" type="text" placeholder="Optional username" />
       </div>
       <label id="srvTokenLabel">API Key / Access Token</label>
       <input id="srvToken" type="text" placeholder="Paste API key or token" />
@@ -1265,8 +1319,13 @@ function syncServerInputs() {
   if (!STATE) return;
   const p = document.getElementById('srvProvider').value;
   document.getElementById('srvUrlWrap').style.display = p === 'tmdb' ? 'none' : 'block';
-  document.getElementById('srvUrl').value = p === 'jellyfin' ? STATE.jellyfinServerUrl : p === 'plex' ? STATE.plexServerUrl : p === 'emby' ? STATE.embyServerUrl : '';
-  document.getElementById('srvToken').value = p === 'jellyfin' ? STATE.jellyfinApiKey : p === 'plex' ? STATE.plexToken : p === 'emby' ? STATE.embyApiKey : STATE.tmdbApiKey;
+  document.getElementById('smbUserWrap').classList.toggle('hidden', p !== 'smb');
+  document.getElementById('srvUrlLabel').textContent = p === 'smb' ? 'SMB Share Path' : 'Server URL';
+  document.getElementById('srvUrl').placeholder = p === 'smb' ? 'smb://192.168.0.50/Wallpapers' : 'http://192.168.0.50:8096';
+  document.getElementById('srvTokenLabel').textContent = p === 'smb' ? 'SMB Password (Optional — leave blank for Guest)' : 'API Key / Access Token';
+  document.getElementById('srvUrl').value = p === 'jellyfin' ? STATE.jellyfinServerUrl : p === 'plex' ? STATE.plexServerUrl : p === 'emby' ? STATE.embyServerUrl : p === 'smb' ? (STATE.smbShareUrl || '') : '';
+  document.getElementById('smbUser').value = p === 'smb' ? (STATE.smbUsername || '') : '';
+  document.getElementById('srvToken').value = p === 'jellyfin' ? STATE.jellyfinApiKey : p === 'plex' ? STATE.plexToken : p === 'emby' ? STATE.embyApiKey : p === 'smb' ? (STATE.smbPassword || '') : STATE.tmdbApiKey;
 }
 function syncSelectedAppInputs() {
   if (!STATE) return;
@@ -1463,6 +1522,9 @@ function renderState() {
   document.getElementById('wpMediaType').value = STATE.wallpaperMediaType || 'both';
   document.getElementById('wpRedditSort').value = STATE.redditSort || 'top_month';
   document.getElementById('clearWpBtn').classList.toggle('hidden', !STATE.hasCustomWallpaper);
+  const albumCount = STATE.localAlbumCount || 0;
+  document.getElementById('albumCountBadge').textContent = albumCount + ' photo' + (albumCount === 1 ? '' : 's');
+  document.getElementById('clearAlbumBtn').classList.toggle('hidden', albumCount === 0);
 
   document.getElementById('redditCatsGrid').innerHTML = STATE.redditCategories.map(c =>
     '<label class="chip-check"><input type="checkbox" class="rd-cat-cb" data-id="'+esc(c.id)+'" '+(c.enabled?'checked':'')+' onchange="saveWallpaperOpts()" /> '+esc(c.label)+'</label>'
@@ -1535,8 +1597,31 @@ function renderState() {
 async function sortSelectedRow() { if (!SELECTED_ROW_ID) return; await api('/api/rows/apps/sort', { method:'POST', body:JSON.stringify({ rowId: SELECTED_ROW_ID }) }); toast('Sorted tiles A–Z'); loadState(); }
 async function cleanupSelectedRow() { if (!SELECTED_ROW_ID) return; await api('/api/rows/apps/cleanup', { method:'POST', body:JSON.stringify({ rowId: SELECTED_ROW_ID }) }); toast('Removed uninstalled apps'); loadState(); }
 async function saveServer() {
-  await api('/api/servers', { method:'POST', body:JSON.stringify({ provider:document.getElementById('srvProvider').value, url:document.getElementById('srvUrl').value.trim(), token:document.getElementById('srvToken').value.trim() }) });
+  const provider = document.getElementById('srvProvider').value;
+  const url = document.getElementById('srvUrl').value.trim();
+  const rawToken = document.getElementById('srvToken').value.trim();
+  const token = provider === 'smb' ? (document.getElementById('smbUser').value.trim() + '\n' + rawToken) : rawToken;
+  await api('/api/servers', { method:'POST', body:JSON.stringify({ provider, url, token }) });
   toast('Saved & applied to TV'); loadState();
+}
+async function uploadAlbumPhotos() {
+  const files = document.getElementById('albumFiles').files;
+  if (!files || files.length === 0) return toast('Choose one or more photos first');
+  let okCount = 0;
+  toast('Uploading ' + files.length + ' photo(s)…');
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const res = await api('/api/album/upload?name=' + encodeURIComponent(f.name), { method:'POST', body:await f.arrayBuffer() });
+    if (res.ok) okCount++;
+  }
+  document.getElementById('albumFiles').value = '';
+  toast('Uploaded ' + okCount + ' photo(s) to TV!');
+  loadState();
+}
+async function clearAlbumPhotos() {
+  if (!confirm('Delete all uploaded album photos on the TV?')) return;
+  await api('/api/album/clear', { method:'POST' });
+  toast('Cleared photo album'); loadState();
 }
 async function saveHomeOpts() {
   await api('/api/home', { method:'POST', body:JSON.stringify({

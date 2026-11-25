@@ -10,6 +10,7 @@ import com.horizontv.launcher.data.InstalledAppsDataSource
 import com.horizontv.launcher.data.JellyfinClient
 import com.horizontv.launcher.data.JellyfinDataSource
 import com.horizontv.launcher.data.JustWatchClient
+import com.horizontv.launcher.data.LocalFolderWallpaperClient
 import com.horizontv.launcher.data.LocalWebCompanionServer
 import com.horizontv.launcher.data.PhotoEntry
 import com.horizontv.launcher.data.PlexClient
@@ -18,12 +19,14 @@ import com.horizontv.launcher.data.ScreensaverPhotoSource
 import com.horizontv.launcher.data.SettingsBackupCodec
 import com.horizontv.launcher.data.SettingsBackupSerializer
 import com.horizontv.launcher.data.SettingsStore
+import com.horizontv.launcher.data.SmbWallpaperClient
 import com.horizontv.launcher.data.StreamingSearchDataSource
 import com.horizontv.launcher.data.TmdbWallpaperClient
 import com.horizontv.launcher.data.WeatherClient
 import com.horizontv.launcher.data.WeatherDataSource
 import com.horizontv.launcher.data.WebCompanionBridge
 import com.horizontv.launcher.model.AppFilter
+import com.horizontv.launcher.model.AppFolder
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.AppMenuTarget
 import com.horizontv.launcher.model.AppRow
@@ -79,6 +82,8 @@ class LauncherViewModel(
   private val plexDataSource: JellyfinDataSource = PlexClient(),
   private val redditDataSource: JellyfinDataSource = RedditWallpaperClient(),
   private val tmdbDataSource: JellyfinDataSource = TmdbWallpaperClient(),
+  private val localFolderDataSource: LocalFolderWallpaperClient? = null,
+  private val smbDataSource: JellyfinDataSource = SmbWallpaperClient(),
   private val streamingSearchDataSource: StreamingSearchDataSource = JustWatchClient(),
   private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
   private val appUpdateDataSource: AppUpdateDataSource? = null,
@@ -110,6 +115,8 @@ class LauncherViewModel(
     MediaWallpaperProvider.PLEX -> plexDataSource
     MediaWallpaperProvider.TMDB -> tmdbDataSource
     MediaWallpaperProvider.REDDIT -> redditDataSource
+    MediaWallpaperProvider.LOCAL_FOLDER -> localFolderDataSource ?: redditDataSource
+    MediaWallpaperProvider.SMB -> smbDataSource
     MediaWallpaperProvider.JELLYFIN, MediaWallpaperProvider.EMBY -> jellyfinDataSource
   }
 
@@ -524,6 +531,123 @@ class LauncherViewModel(
     _uiState.update { it.copy(reorderingTarget = null) }
   }
 
+  // --- App Folders (2x2 Preview Tiles) ---
+
+  fun openCreateFolderDialog() {
+    if (isLayoutLockedWithToast()) return
+    _uiState.update { it.copy(isSettingsOpen = false, isCreatingFolder = true, menuTarget = null) }
+  }
+
+  fun closeCreateFolderDialog() {
+    _uiState.update { it.copy(isCreatingFolder = false) }
+  }
+
+  fun createFolder(title: String) {
+    val cleaned = title.trim().ifEmpty { "Folder ${_uiState.value.settings.folders.size + 1}" }
+    val newId = "f_${UUID.randomUUID().toString().take(8)}"
+    val newFolder = AppFolder(id = newId, title = cleaned, packageNames = emptyList())
+    updateSettings { s ->
+      val primaryId = s.primaryRow.id
+      val updatedRows = s.rows.map { r ->
+        if (r.id == primaryId) r.copy(packageNames = r.packageNames + newFolder.rowToken) else r
+      }
+      s.copy(
+        folders = s.folders + newFolder,
+        rows = updatedRows,
+      )
+    }
+    _uiState.update {
+      it.copy(
+        isCreatingFolder = false,
+        editingFolderAppsId = newId,
+      )
+    }
+    showStatus("Created folder \"$cleaned\" — pick apps to put inside")
+  }
+
+  fun openFolder(folderId: String) {
+    _uiState.update { it.copy(openFolderId = folderId, menuTarget = null, reorderingTarget = null) }
+  }
+
+  fun closeFolder() {
+    _uiState.update { it.copy(openFolderId = null) }
+  }
+
+  fun openEditFolderApps(folderId: String) {
+    if (isLayoutLockedWithToast()) return
+    _uiState.update { it.copy(isSettingsOpen = false, openFolderId = null, editingFolderAppsId = folderId) }
+  }
+
+  fun closeEditFolderApps() {
+    _uiState.update { it.copy(editingFolderAppsId = null) }
+  }
+
+  fun toggleAppInFolder(folderId: String, packageName: String) {
+    if (isLayoutLockedWithToast()) return
+    val appLabel = _uiState.value.allApps.firstOrNull { it.packageName == packageName }?.label ?: "App"
+    val folderTitle = _uiState.value.settings.folders.firstOrNull { it.id == folderId }?.title ?: "Folder"
+    updateSettings { s ->
+      s.copy(
+        folders = s.folders.map { f ->
+          if (f.id != folderId) {
+            f
+          } else {
+            val next = if (packageName in f.packageNames) {
+              showStatus("Removed $appLabel from $folderTitle")
+              f.packageNames - packageName
+            } else {
+              showStatus("Added $appLabel to $folderTitle")
+              f.packageNames + packageName
+            }
+            f.copy(packageNames = next)
+          }
+        },
+      )
+    }
+  }
+
+  fun openRenameFolderDialog(folderId: String) {
+    if (isLayoutLockedWithToast()) return
+    _uiState.update { it.copy(isSettingsOpen = false, openFolderId = null, renamingFolderId = folderId) }
+  }
+
+  fun closeRenameFolderDialog() {
+    _uiState.update { it.copy(renamingFolderId = null) }
+  }
+
+  fun renameFolder(folderId: String, newTitle: String) {
+    val cleaned = newTitle.trim().ifEmpty { "Folder" }
+    updateSettings { s ->
+      s.copy(
+        folders = s.folders.map { f ->
+          if (f.id == folderId) f.copy(title = cleaned) else f
+        },
+      )
+    }
+    _uiState.update { it.copy(renamingFolderId = null) }
+    showStatus("Folder renamed to \"$cleaned\"")
+  }
+
+  fun deleteFolder(folderId: String) {
+    if (isLayoutLockedWithToast()) return
+    val token = "${AppFolder.FOLDER_TOKEN_PREFIX}$folderId"
+    val removedTitle = _uiState.value.settings.folders.firstOrNull { it.id == folderId }?.title ?: "Folder"
+    updateSettings { s ->
+      s.copy(
+        folders = s.folders.filterNot { it.id == folderId },
+        rows = s.rows.map { r -> r.copy(packageNames = r.packageNames - token) },
+      )
+    }
+    _uiState.update {
+      it.copy(
+        openFolderId = if (it.openFolderId == folderId) null else it.openFolderId,
+        editingFolderAppsId = if (it.editingFolderAppsId == folderId) null else it.editingFolderAppsId,
+        renamingFolderId = if (it.renamingFolderId == folderId) null else it.renamingFolderId,
+      )
+    }
+    showStatus("Deleted folder \"$removedTitle\"")
+  }
+
   // --- Media Server Backdrop Slideshow (Jellyfin, Plex, Emby) ---
 
   fun selectWallpaperProvider(provider: MediaWallpaperProvider) {
@@ -624,7 +748,12 @@ class LauncherViewModel(
               MediaWallpaperProvider.TMDB -> base.copy(
                 tmdbApiKey = auth.token,
               )
-              MediaWallpaperProvider.REDDIT -> base
+              MediaWallpaperProvider.SMB -> base.copy(
+                smbShareUrl = auth.serverUrl,
+                smbUsername = username.orEmpty().trim(),
+                smbPassword = password.orEmpty(),
+              )
+              MediaWallpaperProvider.REDDIT, MediaWallpaperProvider.LOCAL_FOLDER -> base
             }
           }
           _uiState.update {
@@ -689,6 +818,7 @@ class LauncherViewModel(
         MediaWallpaperProvider.EMBY -> settings.copy(embyLibraryIds = updatedIds)
         MediaWallpaperProvider.TMDB -> settings.copy(tmdbCategories = updatedIds)
         MediaWallpaperProvider.REDDIT -> settings.copy(redditSubreddits = updatedIds)
+        MediaWallpaperProvider.LOCAL_FOLDER, MediaWallpaperProvider.SMB -> settings
       }
     }
     if (_uiState.value.settings.jellyfinEnabled) {
@@ -855,7 +985,12 @@ class LauncherViewModel(
           tmdbApiKey = "",
           tmdbCategories = LauncherSettings.DEFAULT_TMDB_CATEGORIES,
         )
-        MediaWallpaperProvider.REDDIT -> base
+        MediaWallpaperProvider.SMB -> base.copy(
+          smbShareUrl = "",
+          smbUsername = "",
+          smbPassword = "",
+        )
+        MediaWallpaperProvider.REDDIT, MediaWallpaperProvider.LOCAL_FOLDER -> base
       }
     }
     _uiState.update {
@@ -1775,6 +1910,21 @@ class LauncherViewModel(
     }
   }
 
+  fun setLocalWallpaperFolder(uriString: String?) {
+    updateSettings { s ->
+      s.copy(
+        localWallpaperFolderUri = uriString,
+        wallpaperProvider = MediaWallpaperProvider.LOCAL_FOLDER.id,
+        jellyfinEnabled = true,
+        customWallpaperUri = null,
+      )
+    }
+    cachedBackdrops = emptyList()
+    currentBackdropIndex = 0
+    startJellyfinSlideshow(fetchFreshList = true)
+    showStatus(if (uriString != null) "Local wallpaper folder selected" else "Cleared local wallpaper folder")
+  }
+
   fun setWallpaperDimAlpha(alpha: Float) {
     updateSettings { it.copy(wallpaperDimAlpha = alpha.coerceIn(0.20f, 0.85f)) }
   }
@@ -1851,10 +2001,15 @@ class LauncherViewModel(
       override fun getAllInstalledApps(): List<AppInfo> = _uiState.value.allApps
       override fun removeUninstalledFromRow(rowId: String) {
         val installedPkgs = _uiState.value.allApps.map { it.packageName }.toSet()
+        val folderTokens = _uiState.value.settings.folders.map { it.rowToken }.toSet()
         updateSettings { s ->
           s.copy(
             rows = s.rows.map { r ->
-              if (r.id == rowId) r.copy(packageNames = r.packageNames.filter { it in installedPkgs }) else r
+              if (r.id == rowId) {
+                r.copy(packageNames = r.packageNames.filter { it in installedPkgs || it in folderTokens })
+              } else {
+                r
+              }
             },
           )
         }
@@ -1898,6 +2053,20 @@ class LauncherViewModel(
               wallpaperProvider = MediaWallpaperProvider.TMDB.id,
               jellyfinEnabled = token.isNotBlank(),
             )
+          }
+          "smb" -> {
+            val smbUser = token.substringBefore('\n', "").trim()
+            val smbPass = if (token.contains('\n')) token.substringAfter('\n') else ""
+            updateSettings {
+              it.copy(
+                smbShareUrl = url,
+                smbUsername = smbUser,
+                smbPassword = smbPass,
+                wallpaperProvider = MediaWallpaperProvider.SMB.id,
+                jellyfinEnabled = url.isNotBlank(),
+                customWallpaperUri = null,
+              )
+            }
           }
         }
         val s = _uiState.value.settings
@@ -2134,6 +2303,29 @@ class LauncherViewModel(
         val uri = appDataSource.saveCustomWallpaperBytes(bytes) ?: return false
         setCustomWallpaper(uri)
         return true
+      }
+      override fun saveAlbumPhoto(bytes: ByteArray, filename: String?): Boolean {
+        val saved = localFolderDataSource?.saveAlbumPhoto(bytes, filename) ?: false
+        if (saved) {
+          updateSettings { s ->
+            s.copy(
+              wallpaperProvider = MediaWallpaperProvider.LOCAL_FOLDER.id,
+              jellyfinEnabled = true,
+              customWallpaperUri = null,
+            )
+          }
+          cachedBackdrops = emptyList()
+          startJellyfinSlideshow(fetchFreshList = true)
+        }
+        return saved
+      }
+      override fun getAlbumPhotoCount(): Int = localFolderDataSource?.albumPhotoCount() ?: 0
+      override fun clearLocalAlbum() {
+        localFolderDataSource?.clearAlbum()
+        if (_uiState.value.settings.activeWallpaperProvider == MediaWallpaperProvider.LOCAL_FOLDER) {
+          cachedBackdrops = emptyList()
+          startJellyfinSlideshow(fetchFreshList = true)
+        }
       }
       override fun saveUploadedAppIcon(packageName: String, bytes: ByteArray): Boolean {
         val savedPath = appDataSource.saveCustomIconBytes(packageName, bytes) ?: return false
@@ -2734,6 +2926,7 @@ class LauncherViewModel(
     private val settingsStore: SettingsStore,
     private val jellyfinDataSource: JellyfinDataSource = JellyfinClient(),
     private val weatherDataSource: WeatherDataSource = WeatherClient(),
+    private val localFolderDataSource: LocalFolderWallpaperClient? = null,
     private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
     private val appUpdateDataSource: AppUpdateDataSource? = null,
     private val currentVersionName: String = "2.5.17",
@@ -2745,6 +2938,7 @@ class LauncherViewModel(
         settingsStore = settingsStore,
         jellyfinDataSource = jellyfinDataSource,
         weatherDataSource = weatherDataSource,
+        localFolderDataSource = localFolderDataSource,
         screensaverPhotoSource = screensaverPhotoSource,
         appUpdateDataSource = appUpdateDataSource,
         currentVersionName = currentVersionName,

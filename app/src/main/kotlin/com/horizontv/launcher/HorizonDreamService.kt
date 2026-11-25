@@ -17,8 +17,10 @@ import com.horizontv.launcher.data.AndroidScreensaverPhotoSource
 import com.horizontv.launcher.data.JellyfinClient
 import com.horizontv.launcher.data.JellyfinDataSource
 import com.horizontv.launcher.data.LauncherPreferences
+import com.horizontv.launcher.data.LocalFolderWallpaperClient
 import com.horizontv.launcher.data.PlexClient
 import com.horizontv.launcher.data.RedditWallpaperClient
+import com.horizontv.launcher.data.SmbWallpaperClient
 import com.horizontv.launcher.data.TmdbWallpaperClient
 import com.horizontv.launcher.data.WeatherClient
 import com.horizontv.launcher.model.JellyfinMediaType
@@ -149,6 +151,8 @@ class HorizonDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOw
       MediaWallpaperProvider.PLEX -> PlexClient()
       MediaWallpaperProvider.TMDB -> TmdbWallpaperClient()
       MediaWallpaperProvider.REDDIT -> RedditWallpaperClient()
+      MediaWallpaperProvider.LOCAL_FOLDER -> LocalFolderWallpaperClient(applicationContext)
+      MediaWallpaperProvider.SMB -> SmbWallpaperClient()
     }
     val providerCfg = s.configFor(provider)
     val backdrops = client.fetchBackdrops(

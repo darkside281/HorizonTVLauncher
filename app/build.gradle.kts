@@ -12,13 +12,15 @@ android {
     applicationId = "com.horizontv.launcher"
     minSdk = 24
     targetSdk = 36
-    versionCode = 89
-    versionName = "2.5.45"
+    versionCode = 92
+    versionName = "2.5.48"
   }
 
   buildTypes {
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      signingConfig = signingConfigs.getByName("debug")
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
   }
@@ -37,7 +39,14 @@ android {
 
   packaging {
     resources {
-      excludes += "/META-INF/{AL2.0,LGPL2.1}"
+      excludes += listOf(
+        "/META-INF/{AL2.0,LGPL2.1}",
+        "META-INF/DEPENDENCIES",
+        "META-INF/LICENSE*",
+        "META-INF/NOTICE*",
+        "org/bouncycastle/pqc/**",
+        "org/bouncycastle/x509/**",
+      )
     }
   }
 }
@@ -66,6 +75,7 @@ dependencies {
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation("com.google.zxing:core:3.5.3")
+  implementation("com.hierynomus:smbj:0.13.0")
 
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)

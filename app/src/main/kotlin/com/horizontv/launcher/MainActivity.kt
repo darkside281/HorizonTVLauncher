@@ -29,6 +29,7 @@ import com.horizontv.launcher.data.AndroidScreensaverPhotoSource
 import com.horizontv.launcher.data.AppRepository
 import com.horizontv.launcher.data.GitHubUpdater
 import com.horizontv.launcher.data.LauncherPreferences
+import com.horizontv.launcher.data.LocalFolderWallpaperClient
 import com.horizontv.launcher.ui.LauncherScreen
 import com.horizontv.launcher.ui.LauncherViewModel
 import com.horizontv.launcher.ui.theme.HorizonTVLauncherTheme
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
     LauncherViewModel.Factory(
       appDataSource = AppRepository(applicationContext),
       settingsStore = LauncherPreferences(applicationContext),
+      localFolderDataSource = LocalFolderWallpaperClient(applicationContext),
       screensaverPhotoSource = AndroidScreensaverPhotoSource(applicationContext),
       appUpdateDataSource = GitHubUpdater(applicationContext),
       currentVersionName = installedVersion,
@@ -111,6 +113,20 @@ class MainActivity : ComponentActivity() {
       } else {
         viewModel.onBackupExported(false)
       }
+    }
+  }
+
+  private val localWallpaperFolderPicker = registerForActivityResult(
+    ActivityResultContracts.OpenDocumentTree(),
+  ) { uri ->
+    if (uri != null) {
+      runCatching {
+        contentResolver.takePersistableUriPermission(
+          uri,
+          Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        )
+      }
+      viewModel.setLocalWallpaperFolder(uri.toString())
     }
   }
 
@@ -350,6 +366,8 @@ class MainActivity : ComponentActivity() {
           onClearWallpaper = cb.onClearWallpaper,
           onSetWallpaperDim = cb.onSetWallpaperDim,
           onToggleWallpaperKenBurns = cb.onToggleWallpaperKenBurns,
+          onPickLocalWallpaperFolder = cb.onPickLocalWallpaperFolder,
+          onClearLocalWallpaperFolder = cb.onClearLocalWallpaperFolder,
           onSelectWallpaperProvider = cb.onSelectWallpaperProvider,
           onOpenJellyfinSetup = cb.onOpenJellyfinSetup,
           onCloseJellyfinSetup = cb.onCloseJellyfinSetup,
@@ -410,6 +428,18 @@ class MainActivity : ComponentActivity() {
           onEnableRedditWallpapersFromWizard = cb.onEnableRedditWallpapersFromWizard,
           onStartWebCompanion = cb.onStartWebCompanion,
           onStopWebCompanion = cb.onStopWebCompanion,
+          onOpenCreateFolder = cb.onOpenCreateFolder,
+          onCloseCreateFolder = cb.onCloseCreateFolder,
+          onCreateFolder = cb.onCreateFolder,
+          onOpenFolder = cb.onOpenFolder,
+          onCloseFolder = cb.onCloseFolder,
+          onOpenEditFolderApps = cb.onOpenEditFolderApps,
+          onCloseEditFolderApps = cb.onCloseEditFolderApps,
+          onToggleAppInFolder = cb.onToggleAppInFolder,
+          onOpenRenameFolder = cb.onOpenRenameFolder,
+          onCloseRenameFolder = cb.onCloseRenameFolder,
+          onRenameFolder = cb.onRenameFolder,
+          onDeleteFolder = cb.onDeleteFolder,
           onSetTileOpacity = cb.onSetTileOpacity,
           onSetTileSpacing = cb.onSetTileSpacing,
           onSetTileCornerStyle = cb.onSetTileCornerStyle,
@@ -536,6 +566,16 @@ class MainActivity : ComponentActivity() {
     val onClearWallpaper: () -> Unit = { vm.setCustomWallpaper(null) }
     val onSetWallpaperDim = vm::setWallpaperDimAlpha
     val onToggleWallpaperKenBurns = vm::toggleWallpaperKenBurns
+    val onPickLocalWallpaperFolder: () -> Unit = {
+      val launched = runCatching {
+        activity.localWallpaperFolderPicker.launch(null)
+        true
+      }.getOrDefault(false)
+      if (!launched) {
+        Toast.makeText(activity, "No folder picker on this TV — use Local Web Companion to upload photos!", Toast.LENGTH_LONG).show()
+      }
+    }
+    val onClearLocalWallpaperFolder: () -> Unit = { vm.setLocalWallpaperFolder(null) }
     val onSelectWallpaperProvider = vm::selectWallpaperProvider
     val onOpenJellyfinSetup: () -> Unit = { vm.openJellyfinSetup() }
     val onCloseJellyfinSetup = vm::closeJellyfinSetup
@@ -598,6 +638,18 @@ class MainActivity : ComponentActivity() {
     val onEnableRedditWallpapersFromWizard = vm::enableRedditWallpapersFromWizard
     val onStartWebCompanion = vm::startWebCompanion
     val onStopWebCompanion = vm::stopWebCompanion
+    val onOpenCreateFolder = vm::openCreateFolderDialog
+    val onCloseCreateFolder = vm::closeCreateFolderDialog
+    val onCreateFolder = vm::createFolder
+    val onOpenFolder = vm::openFolder
+    val onCloseFolder = vm::closeFolder
+    val onOpenEditFolderApps = vm::openEditFolderApps
+    val onCloseEditFolderApps = vm::closeEditFolderApps
+    val onToggleAppInFolder = vm::toggleAppInFolder
+    val onOpenRenameFolder = vm::openRenameFolderDialog
+    val onCloseRenameFolder = vm::closeRenameFolderDialog
+    val onRenameFolder = vm::renameFolder
+    val onDeleteFolder = vm::deleteFolder
     val onSetTileOpacity = vm::setTileOpacity
     val onSetTileSpacing = vm::setTileSpacing
     val onSetTileCornerStyle = vm::setTileCornerStyle

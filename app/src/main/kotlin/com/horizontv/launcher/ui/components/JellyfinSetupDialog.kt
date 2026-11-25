@@ -59,13 +59,20 @@ fun JellyfinSetupDialog(
   onConnect: (serverUrl: String, apiKey: String?, username: String?, password: String?) -> Unit,
   onDisconnect: () -> Unit,
 ) {
+  val isSmb = provider == MediaWallpaperProvider.SMB
   var serverUrl by remember(provider, initialServerUrl) {
-    mutableStateOf(initialServerUrl.ifBlank { "http://" })
+    mutableStateOf(
+      initialServerUrl.ifBlank { if (isSmb) "smb://" else "http://" },
+    )
   }
-  var useApiKey by remember(provider, initialApiKey) { mutableStateOf(true) }
-  var apiKey by remember(provider, initialApiKey) { mutableStateOf(initialApiKey) }
-  var username by remember(provider) { mutableStateOf("") }
-  var password by remember(provider) { mutableStateOf("") }
+  var useApiKey by remember(provider, initialApiKey) { mutableStateOf(!isSmb) }
+  var apiKey by remember(provider, initialApiKey) { mutableStateOf(if (isSmb) "" else initialApiKey) }
+  var username by remember(provider, initialApiKey) {
+    mutableStateOf(if (isSmb && initialApiKey.contains('\n')) initialApiKey.substringBefore('\n') else "")
+  }
+  var password by remember(provider, initialApiKey) {
+    mutableStateOf(if (isSmb && initialApiKey.contains('\n')) initialApiKey.substringAfter('\n') else "")
+  }
 
   val connectFocusRequester = remember { FocusRequester() }
 
@@ -110,10 +117,13 @@ fun JellyfinSetupDialog(
               color = Color.White,
             )
             Text(
-              text = if (provider == MediaWallpaperProvider.TMDB) {
-                "Pulls 1080p/4K movie & TV backdrops and official ClearLogos from The Movie Database (themoviedb.org)."
-              } else {
-                "Pulls 1080p movie & TV backdrops and logos from your ${provider.label} server for a smooth crossfading home wallpaper."
+              text = when (provider) {
+                MediaWallpaperProvider.TMDB ->
+                  "Pulls 1080p/4K movie & TV backdrops and official ClearLogos from The Movie Database (themoviedb.org)."
+                MediaWallpaperProvider.SMB ->
+                  "Connect to a Windows, NAS, or Samba shared folder over Wi-Fi/LAN (e.g. smb://192.168.0.50/Wallpapers). Leave username & password blank for Guest access."
+                else ->
+                  "Pulls 1080p movie & TV backdrops and logos from your ${provider.label} server for a smooth crossfading home wallpaper."
               },
               style = MaterialTheme.typography.bodyMedium,
               color = Color.White.copy(alpha = 0.66f),
@@ -144,25 +154,27 @@ fun JellyfinSetupDialog(
               colors = fieldColors,
             )
 
-            // Auth mode switch: Token/API Key vs Username + Password
-            Row(
-              modifier = Modifier.fillMaxWidth(),
-              horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-              AuthModePill(
-                label = if (provider == MediaWallpaperProvider.PLEX) "Plex Token" else "API Key",
-                selected = useApiKey,
-                accent = accent,
-                onClick = { useApiKey = true },
-                modifier = Modifier.weight(1f),
-              )
-              AuthModePill(
-                label = if (provider == MediaWallpaperProvider.PLEX) "Plex Account Sign-In" else "Username & Password",
-                selected = !useApiKey,
-                accent = accent,
-                onClick = { useApiKey = false },
-                modifier = Modifier.weight(1f),
-              )
+            // Auth mode switch: Token/API Key vs Username + Password (hidden for SMB)
+            if (!isSmb) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                AuthModePill(
+                  label = if (provider == MediaWallpaperProvider.PLEX) "Plex Token" else "API Key",
+                  selected = useApiKey,
+                  accent = accent,
+                  onClick = { useApiKey = true },
+                  modifier = Modifier.weight(1f),
+                )
+                AuthModePill(
+                  label = if (provider == MediaWallpaperProvider.PLEX) "Plex Account Sign-In" else "Username & Password",
+                  selected = !useApiKey,
+                  accent = accent,
+                  onClick = { useApiKey = false },
+                  modifier = Modifier.weight(1f),
+                )
+              }
             }
           }
 

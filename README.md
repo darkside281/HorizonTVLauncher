@@ -37,7 +37,7 @@ Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shi
 ## What It Can Do
 
 ### Home Screen & Layout
-- **Custom Home Rows & Per-Row Tile Shapes**: Create, rename, reorder, delete, sort A–Z, and lock custom app rows — and switch any individual row between **16:9 Banner**, **1:1 Square**, or **2:3 Poster** tiles.
+- **Custom Home Rows, App Folders & Per-Row Tile Shapes**: Create, rename, reorder, delete, sort A–Z, and lock custom app rows — group related apps into **App Folders (2×2 preview tiles)** with frosted popup grids, and switch any individual row between **16:9 Banner**, **1:1 Square**, or **2:3 Poster** tiles.
 - **Minimalist Bottom-Dock Mode**: Clean frosted bottom dock that keeps your wallpaper artwork front and center.
 - **Flexible Tile Styling**: Choose **Small / Medium / Large** tile sizes, **Compact / Normal / Wide** tile spacing, **40%–100%** unfocused tile opacity, **Sharp / Rounded / Soft** corner roundness, **Accent Glow / Crisp Outline / Zoom Only / Soft Shadow** focus styles, toggle **App Titles Under Tiles**, rename apps, and assign custom PNG/JPG app icons.
 - **Custom Clock Styles & Typography**: Choose **Classic**, **Centered Cinema**, **Analog Dial**, or **Minimal** clock layouts with selectable **Modern Sans / Editorial Serif / Tech Mono** fonts and **Light / Regular / Bold** weights.
@@ -64,7 +64,7 @@ Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shi
   - **Backup & Restore**: Download or upload/restore your full Horizon JSON backup right from the browser.
 
 ### Live Wallpapers (Per-Service Configs)
-- Supports **Jellyfin**, **Plex**, **Emby**, **TMDB**, **Reddit** (curated family-friendly categories & custom feeds), **Custom Local Image**, and **6 built-in Ambient Gradient Themes**.
+- Supports **Jellyfin**, **Plex**, **Emby**, **TMDB**, **Reddit** (curated family-friendly categories & custom feeds), **Local Folder & Web-Uploaded Photo Album**, **SMB Network Shares (`smb://...`)**, **Single Custom Image**, and **6 built-in Ambient Gradient Themes**.
 - **Independent Per-Service Settings**: Each wallpaper provider saves its own **Show Movie/Show Logo**, **Slideshow Speed**, **Wallpaper Count**, and **Media Type** independently.
 - **Multi-Select Libraries & Categories**, adjustable wallpaper dimming, and optional **Ken Burns Slow Motion** pan/zoom on your Home wallpaper (works with both live slideshows and custom static wallpapers).
 
@@ -106,10 +106,10 @@ Horizon TV Launcher targets **Android 7.0+ (API 24)** up to **Android 16**, requ
 
 ## Installation
 
-1. Download the latest APK (`HorizonTVLauncher-v2.5.43.apk`) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+1. Download the latest APK (`HorizonTVLauncher-v2.5.48.apk`) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 2. Sideload it onto your Android TV / Google TV device (via USB, file manager, or ADB):
    ```bash
-   adb install -r HorizonTVLauncher-v2.5.43.apk
+   adb install -r HorizonTVLauncher-v2.5.48.apk
    ```
 3. Open **Horizon TV Launcher** (follow the 4-step Setup Wizard, or open **Customize → Launcher & Apps → Set as Default Home**).
    - **Android TV (Nvidia Shield, Sony, etc.)** — optionally disable the stock launcher via ADB so the Home button always opens Horizon:

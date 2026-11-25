@@ -84,6 +84,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.horizontv.launcher.R
 import com.horizontv.launcher.model.AccentPreset
+import com.horizontv.launcher.model.AppFolder
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.AppUpdateInfo
 import com.horizontv.launcher.model.AppRow
@@ -149,12 +150,18 @@ fun SettingsOverlay(
   onMoveRowUp: (String) -> Unit,
   onMoveRowDown: (String) -> Unit,
   onDeleteRow: (String) -> Unit,
+  onCreateFolder: () -> Unit = {},
+  onEditFolderApps: (String) -> Unit = {},
+  onRenameFolder: (String) -> Unit = {},
+  onDeleteFolder: (String) -> Unit = {},
   onSelectTheme: (String) -> Unit,
   onSelectAccent: (String) -> Unit,
   onPickWallpaper: () -> Unit,
   onClearWallpaper: () -> Unit,
   onSetWallpaperDim: (Float) -> Unit,
   onToggleWallpaperKenBurns: () -> Unit = {},
+  onPickLocalWallpaperFolder: () -> Unit = {},
+  onClearLocalWallpaperFolder: () -> Unit = {},
   onSelectWallpaperProvider: (MediaWallpaperProvider) -> Unit,
   onOpenJellyfinSetup: () -> Unit,
   onToggleJellyfinSlideshow: () -> Unit,
@@ -507,6 +514,10 @@ fun SettingsOverlay(
                     onMoveRowUp = onMoveRowUp,
                     onMoveRowDown = onMoveRowDown,
                     onDeleteRow = onDeleteRow,
+                    onCreateFolder = onCreateFolder,
+                    onEditFolderApps = onEditFolderApps,
+                    onRenameFolder = onRenameFolder,
+                    onDeleteFolder = onDeleteFolder,
                     onSetHomeTileSize = onSetHomeTileSize,
                     onToggleMinimalistDockMode = onToggleMinimalistDockMode,
                     onSetTileOpacity = onSetTileOpacity,
@@ -577,6 +588,10 @@ fun SettingsOverlay(
                     onToggleJellyfinShowTitle = onToggleJellyfinShowTitle,
                     onSetWallpaperDim = onSetWallpaperDim,
                     onToggleWallpaperKenBurns = onToggleWallpaperKenBurns,
+                    onPickLocalWallpaperFolder = onPickLocalWallpaperFolder,
+                    onClearLocalWallpaperFolder = onClearLocalWallpaperFolder,
+                    onPickWallpaper = onPickWallpaper,
+                    onClearWallpaper = onClearWallpaper,
                     onNextJellyfinBackdrop = onNextJellyfinBackdrop,
                   )
                 }
@@ -636,10 +651,6 @@ fun SettingsOverlay(
                     rightPaneEntryRequester = rightPaneEntryRequester,
                     activeTabRequester = activeTabRequester,
                     onSelectTheme = onSelectTheme,
-                    onPickWallpaper = onPickWallpaper,
-                    onClearWallpaper = onClearWallpaper,
-                    onSetWallpaperDim = onSetWallpaperDim,
-                    onToggleWallpaperKenBurns = onToggleWallpaperKenBurns,
                     onSelectAccent = onSelectAccent,
                   )
                 }
@@ -741,6 +752,10 @@ private fun SettingsHomePane(
   onMoveRowUp: (String) -> Unit,
   onMoveRowDown: (String) -> Unit,
   onDeleteRow: (String) -> Unit,
+  onCreateFolder: () -> Unit = {},
+  onEditFolderApps: (String) -> Unit = {},
+  onRenameFolder: (String) -> Unit = {},
+  onDeleteFolder: (String) -> Unit = {},
   onSetHomeTileSize: (String) -> Unit,
   onToggleMinimalistDockMode: () -> Unit,
   onSetTileOpacity: (Float) -> Unit,
@@ -831,6 +846,29 @@ private fun SettingsHomePane(
           accent = accent,
           highlighted = true,
           onClick = onCreateRow,
+          modifier = Modifier
+            .fillMaxWidth()
+            .focusProperties { left = activeTabRequester },
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+        SettingsFieldLabel("App Folders (2×2 Tiles)")
+        settings.folders.forEach { folder ->
+          FolderManageItem(
+            folder = folder,
+            accent = accent,
+            firstFocusModifier = Modifier.focusProperties { left = activeTabRequester },
+            onEditApps = { onEditFolderApps(folder.id) },
+            onRename = { onRenameFolder(folder.id) },
+            onDelete = { onDeleteFolder(folder.id) },
+          )
+        }
+        SettingsActionChip(
+          icon = Icons.Rounded.FolderOpen,
+          label = "Create App Folder",
+          accent = accent,
+          highlighted = false,
+          onClick = onCreateFolder,
           modifier = Modifier
             .fillMaxWidth()
             .focusProperties { left = activeTabRequester },
@@ -1540,6 +1578,10 @@ private fun SettingsWallpapersPane(
   onToggleJellyfinShowTitle: () -> Unit,
   onSetWallpaperDim: (Float) -> Unit,
   onToggleWallpaperKenBurns: () -> Unit = {},
+  onPickLocalWallpaperFolder: () -> Unit = {},
+  onClearLocalWallpaperFolder: () -> Unit = {},
+  onPickWallpaper: () -> Unit = {},
+  onClearWallpaper: () -> Unit = {},
   onNextJellyfinBackdrop: () -> Unit,
 ) {
   val activeProvider = settings.activeWallpaperProvider
@@ -1550,30 +1592,115 @@ private fun SettingsWallpapersPane(
   val providerLibraryIds = settings.libraryIdsFor(activeProvider)
 
   SettingsFieldLabel("Wallpaper Provider")
-  Row(
-    modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    MediaWallpaperProvider.entries.forEachIndexed { idx, provider ->
-      SelectablePill(
-        label = provider.label,
-        selected = activeProvider == provider,
+  MediaWallpaperProvider.entries.chunked(4).forEachIndexed { rowIdx, rowProviders ->
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      rowProviders.forEachIndexed { idx, provider ->
+        SelectablePill(
+          label = provider.label,
+          selected = activeProvider == provider,
+          accent = accent,
+          showCheckmark = true,
+          onClick = { onSelectWallpaperProvider(provider) },
+          modifier = Modifier
+            .weight(1f)
+            .then(
+              if (rowIdx == 0 && idx == 0) {
+                Modifier
+                  .focusRequester(rightPaneEntryRequester)
+                  .focusProperties { left = activeTabRequester }
+              } else if (idx == 0) {
+                Modifier.focusProperties { left = activeTabRequester }
+              } else {
+                Modifier
+              },
+            ),
+        )
+      }
+    }
+  }
+
+  if (activeProvider == MediaWallpaperProvider.LOCAL_FOLDER) {
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      SettingsActionChip(
+        icon = Icons.Rounded.FolderOpen,
+        label = if (settings.localWallpaperFolderUri != null) "Change Local Folder…" else "Pick Local Folder…",
         accent = accent,
-        showCheckmark = true,
-        onClick = { onSelectWallpaperProvider(provider) },
+        highlighted = settings.localWallpaperFolderUri != null,
+        onClick = onPickLocalWallpaperFolder,
         modifier = Modifier
           .weight(1f)
-          .then(
-            if (idx == 0) {
-              Modifier
-                .focusRequester(rightPaneEntryRequester)
-                .focusProperties { left = activeTabRequester }
-            } else {
-              Modifier
-            },
-          ),
+          .focusProperties { left = activeTabRequester },
+      )
+      if (settings.localWallpaperFolderUri != null) {
+        SettingsActionChip(
+          icon = Icons.Rounded.Close,
+          label = "Clear Folder",
+          accent = accent,
+          highlighted = false,
+          onClick = onClearLocalWallpaperFolder,
+          modifier = Modifier.weight(0.6f),
+        )
+      }
+    }
+
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      SettingsActionChip(
+        icon = Icons.Rounded.Image,
+        label = if (settings.customWallpaperUri != null) "Change Single Image…" else "Pick Single Image…",
+        accent = accent,
+        highlighted = !settings.jellyfinEnabled && settings.customWallpaperUri != null,
+        onClick = onPickWallpaper,
+        modifier = Modifier
+          .weight(1f)
+          .focusProperties { left = activeTabRequester },
+      )
+      if (settings.customWallpaperUri != null) {
+        SettingsActionChip(
+          icon = Icons.Rounded.Wallpaper,
+          label = "Clear Image",
+          accent = accent,
+          highlighted = false,
+          onClick = onClearWallpaper,
+          modifier = Modifier.weight(0.6f),
+        )
+      }
+    }
+
+    if (!settings.jellyfinEnabled && settings.customWallpaperUri != null) {
+      WallpaperDimmingRow(
+        currentDim = settings.wallpaperDimAlpha,
+        accent = accent,
+        leftFocusRequester = activeTabRequester,
+        onSetDim = onSetWallpaperDim,
+      )
+      SettingsToggleRow(
+        title = "Ken Burns Slow Motion",
+        subtitle = if (settings.wallpaperKenBurns) {
+          "Enabled — gently zooms & pans your Home wallpaper like the screensaver"
+        } else {
+          "Off — static Home wallpaper"
+        },
+        checked = settings.wallpaperKenBurns,
+        accent = accent,
+        onClick = onToggleWallpaperKenBurns,
+        modifier = Modifier.focusProperties { left = activeTabRequester },
       )
     }
+
+    Text(
+      text = "Tip: You can also batch-upload multiple photos from your phone or PC via Local Web Companion → Wallpapers & Apps.",
+      style = MaterialTheme.typography.bodyMedium,
+      color = Color.White.copy(alpha = 0.62f),
+    )
   }
 
   if (activeProvider.requiresServerConfig) {
@@ -1584,6 +1711,10 @@ private fun SettingsWallpapersPane(
           "TMDB: API Key Connected (Change…)"
         activeProvider == MediaWallpaperProvider.TMDB ->
           "Connect TMDB API Key…"
+        activeProvider == MediaWallpaperProvider.SMB && isProviderConfigured ->
+          "SMB Share: ${providerServerUrl.removePrefix("smb://")}"
+        activeProvider == MediaWallpaperProvider.SMB ->
+          "Connect SMB Network Share…"
         isProviderConfigured ->
           "${activeProvider.label} Server: ${providerServerUrl.removePrefix("http://").removePrefix("https://")}"
         else ->
@@ -2401,10 +2532,6 @@ private fun SettingsAppearancePane(
   rightPaneEntryRequester: FocusRequester,
   activeTabRequester: FocusRequester,
   onSelectTheme: (String) -> Unit,
-  onPickWallpaper: () -> Unit,
-  onClearWallpaper: () -> Unit,
-  onSetWallpaperDim: (Float) -> Unit,
-  onToggleWallpaperKenBurns: () -> Unit = {},
   onSelectAccent: (String) -> Unit,
 ) {
   SettingsFieldLabel("Ambient Background Themes")
@@ -2432,54 +2559,6 @@ private fun SettingsAppearancePane(
         }
       }
     }
-  }
-
-  SettingsFieldLabel("Custom Photo Wallpaper")
-  Row(
-    modifier = Modifier.fillMaxWidth(),
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    SettingsActionChip(
-      icon = Icons.Rounded.Image,
-      label = "Choose Image…",
-      accent = accent,
-      highlighted = !settings.jellyfinEnabled && settings.customWallpaperUri != null,
-      onClick = onPickWallpaper,
-      modifier = Modifier
-        .weight(1f)
-        .focusProperties { left = activeTabRequester },
-    )
-    if (settings.customWallpaperUri != null) {
-      SettingsActionChip(
-        icon = Icons.Rounded.Wallpaper,
-        label = "Reset Theme",
-        accent = accent,
-        highlighted = false,
-        onClick = onClearWallpaper,
-        modifier = Modifier.weight(1f),
-      )
-    }
-  }
-
-  if (settings.customWallpaperUri != null) {
-    WallpaperDimmingRow(
-      currentDim = settings.wallpaperDimAlpha,
-      accent = accent,
-      leftFocusRequester = activeTabRequester,
-      onSetDim = onSetWallpaperDim,
-    )
-    SettingsToggleRow(
-      title = "Ken Burns Slow Motion",
-      subtitle = if (settings.wallpaperKenBurns) {
-        "Enabled — gently zooms & pans your Home wallpaper like the screensaver"
-      } else {
-        "Off — static Home wallpaper"
-      },
-      checked = settings.wallpaperKenBurns,
-      accent = accent,
-      onClick = onToggleWallpaperKenBurns,
-      modifier = Modifier.focusProperties { left = activeTabRequester },
-    )
   }
 
   SettingsFieldLabel("Accent Color")
@@ -3264,6 +3343,71 @@ private fun WallpaperDimmingRow(
             .then(if (i == 0) Modifier.focusProperties { left = leftFocusRequester } else Modifier),
         )
       }
+    }
+  }
+}
+
+@Composable
+private fun FolderManageItem(
+  folder: AppFolder,
+  accent: AccentPreset,
+  firstFocusModifier: Modifier,
+  onEditApps: () -> Unit,
+  onRename: () -> Unit,
+  onDelete: () -> Unit,
+) {
+  Surface(
+    shape = RoundedCornerShape(14.dp),
+    color = Color.White.copy(alpha = 0.06f),
+    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 14.dp, vertical = 11.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+      Icon(
+        imageVector = Icons.Rounded.FolderOpen,
+        contentDescription = null,
+        tint = accent.primary,
+        modifier = Modifier.size(20.dp),
+      )
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = folder.title,
+          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+          color = Color.White,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+          text = "${folder.packageNames.size} app${if (folder.packageNames.size == 1) "" else "s"}",
+          style = MaterialTheme.typography.labelMedium,
+          color = Color.White.copy(alpha = 0.60f),
+        )
+      }
+      RowSmallActionButton(
+        icon = Icons.Rounded.Add,
+        contentDescription = "Edit Apps in ${folder.title}",
+        accent = accent,
+        onClick = onEditApps,
+        modifier = firstFocusModifier,
+      )
+      RowSmallActionButton(
+        icon = Icons.Rounded.Edit,
+        contentDescription = "Rename ${folder.title}",
+        accent = accent,
+        onClick = onRename,
+      )
+      RowSmallActionButton(
+        icon = Icons.Rounded.DeleteOutline,
+        contentDescription = "Delete ${folder.title}",
+        accent = accent,
+        isDestructive = true,
+        onClick = onDelete,
+      )
     }
   }
 }

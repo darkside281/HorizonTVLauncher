@@ -16,6 +16,39 @@ data class AppInfo(
   val hasCustomIcon: Boolean = false,
 )
 
+data class AppFolder(
+  val id: String,
+  val title: String,
+  val packageNames: List<String> = emptyList(),
+) {
+  val rowToken: String
+    get() = "$FOLDER_TOKEN_PREFIX$id"
+
+  companion object {
+    const val FOLDER_TOKEN_PREFIX = "folder:"
+    fun isFolderToken(token: String): Boolean = token.startsWith(FOLDER_TOKEN_PREFIX)
+    fun folderIdFromToken(token: String): String = token.removePrefix(FOLDER_TOKEN_PREFIX)
+  }
+}
+
+sealed class RowTileEntry {
+  abstract val key: String
+  abstract val label: String
+
+  data class AppEntry(val app: AppInfo) : RowTileEntry() {
+    override val key: String get() = app.packageName
+    override val label: String get() = app.label
+  }
+
+  data class FolderEntry(
+    val folder: AppFolder,
+    val apps: List<AppInfo>,
+  ) : RowTileEntry() {
+    override val key: String get() = folder.rowToken
+    override val label: String get() = folder.title
+  }
+}
+
 data class AppRow(
   val id: String,
   val title: String,
@@ -27,6 +60,7 @@ data class ResolvedAppRow(
   val id: String,
   val title: String,
   val apps: List<AppInfo>,
+  val entries: List<RowTileEntry> = apps.map { RowTileEntry.AppEntry(it) },
   val tileShape: TileAspectShape = TileAspectShape.BANNER_16_9,
 )
 
@@ -383,13 +417,27 @@ enum class MediaWallpaperProvider(
     defaultPortHint = "",
     tokenLabel = "",
     usernameLabel = "",
+  ),
+  LOCAL_FOLDER(
+    id = "local_folder",
+    label = "Local Folder",
+    defaultPortHint = "",
+    tokenLabel = "",
+    usernameLabel = "",
+  ),
+  SMB(
+    id = "smb",
+    label = "SMB Share",
+    defaultPortHint = "smb://192.168.0.50/Wallpapers",
+    tokenLabel = "Password (optional — leave blank for Guest)",
+    usernameLabel = "Username (optional — leave blank for Guest)",
   );
 
   val requiresServerConfig: Boolean
-    get() = this != REDDIT
+    get() = this != REDDIT && this != LOCAL_FOLDER
 
   val requiresServerUrl: Boolean
-    get() = this != REDDIT && this != TMDB
+    get() = this != REDDIT && this != TMDB && this != LOCAL_FOLDER
 
   companion object {
     fun fromId(id: String?): MediaWallpaperProvider =
@@ -581,6 +629,7 @@ data class WallpaperProviderConfig(
 
 data class LauncherSettings(
   val rows: List<AppRow> = listOf(AppRow(id = DEFAULT_FAVORITES_ROW_ID, title = "Favorites")),
+  val folders: List<AppFolder> = emptyList(),
   val hiddenPackages: Set<String> = emptySet(),
   val customLabels: Map<String, String> = emptyMap(),
   val customIconPaths: Map<String, String> = emptyMap(),
@@ -611,6 +660,10 @@ data class LauncherSettings(
   val redditSubreddits: Set<String> = DEFAULT_REDDIT_SUBREDDITS,
   val redditCustomSubreddits: Set<String> = emptySet(),
   val redditSort: String = RedditSort.TOP_MONTH.id,
+  val localWallpaperFolderUri: String? = null,
+  val smbShareUrl: String = "",
+  val smbUsername: String = "",
+  val smbPassword: String = "",
   val wallpaperProviderConfigs: Map<String, WallpaperProviderConfig> = emptyMap(),
   val weatherEnabled: Boolean = false,
   val weatherLocationName: String = "",
@@ -749,12 +802,17 @@ data class LauncherSettings(
   val isTmdbConfigured: Boolean
     get() = tmdbApiKey.isNotBlank()
 
+  val isSmbConfigured: Boolean
+    get() = smbShareUrl.isNotBlank()
+
   fun isProviderConfigured(provider: MediaWallpaperProvider): Boolean = when (provider) {
     MediaWallpaperProvider.JELLYFIN -> isJellyfinConfigured
     MediaWallpaperProvider.PLEX -> isPlexConfigured
     MediaWallpaperProvider.EMBY -> isEmbyConfigured
     MediaWallpaperProvider.TMDB -> isTmdbConfigured
     MediaWallpaperProvider.REDDIT -> true
+    MediaWallpaperProvider.LOCAL_FOLDER -> true
+    MediaWallpaperProvider.SMB -> isSmbConfigured
   }
 
   val isActiveWallpaperProviderConfigured: Boolean
@@ -766,6 +824,8 @@ data class LauncherSettings(
     MediaWallpaperProvider.EMBY -> embyServerUrl
     MediaWallpaperProvider.TMDB -> "https://api.themoviedb.org/3"
     MediaWallpaperProvider.REDDIT -> redditSort
+    MediaWallpaperProvider.LOCAL_FOLDER -> localWallpaperFolderUri.orEmpty()
+    MediaWallpaperProvider.SMB -> smbShareUrl
   }
 
   fun tokenFor(provider: MediaWallpaperProvider): String = when (provider) {
@@ -774,6 +834,8 @@ data class LauncherSettings(
     MediaWallpaperProvider.EMBY -> embyApiKey
     MediaWallpaperProvider.TMDB -> tmdbApiKey
     MediaWallpaperProvider.REDDIT -> ""
+    MediaWallpaperProvider.LOCAL_FOLDER -> ""
+    MediaWallpaperProvider.SMB -> if (smbUsername.isBlank() && smbPassword.isBlank()) "" else "$smbUsername\n$smbPassword"
   }
 
   fun userIdFor(provider: MediaWallpaperProvider): String = when (provider) {
@@ -782,6 +844,8 @@ data class LauncherSettings(
     MediaWallpaperProvider.EMBY -> embyUserId
     MediaWallpaperProvider.TMDB -> ""
     MediaWallpaperProvider.REDDIT -> ""
+    MediaWallpaperProvider.LOCAL_FOLDER -> ""
+    MediaWallpaperProvider.SMB -> ""
   }
 
   fun libraryIdsFor(provider: MediaWallpaperProvider): Set<String> = when (provider) {
@@ -790,6 +854,8 @@ data class LauncherSettings(
     MediaWallpaperProvider.EMBY -> embyLibraryIds
     MediaWallpaperProvider.TMDB -> tmdbCategories
     MediaWallpaperProvider.REDDIT -> redditSubreddits
+    MediaWallpaperProvider.LOCAL_FOLDER -> emptySet()
+    MediaWallpaperProvider.SMB -> emptySet()
   }
 
   val isWeatherConfigured: Boolean
@@ -941,6 +1007,10 @@ data class LauncherUiState(
   val reorderingTarget: ReorderTarget? = null,
   val isSettingsOpen: Boolean = false,
   val isSetupWizardOpen: Boolean = false,
+  val openFolderId: String? = null,
+  val editingFolderAppsId: String? = null,
+  val renamingFolderId: String? = null,
+  val isCreatingFolder: Boolean = false,
   val webCompanionInfo: WebCompanionInfo? = null,
   val setupProviderDialog: MediaWallpaperProvider? = null,
   val isAddingSubreddit: Boolean = false,
@@ -989,14 +1059,27 @@ data class LauncherUiState(
   val resolvedRows: List<ResolvedAppRow>
     get() {
       val byPackage = visiblePool.associateBy { it.packageName }
+      val folderById = settings.folders.associateBy { it.id }
       val sourceRows = settings.rows.ifEmpty {
         listOf(AppRow(id = LauncherSettings.DEFAULT_FAVORITES_ROW_ID, title = "Favorites"))
       }
       return sourceRows.map { row ->
+        val resolvedEntries = row.packageNames.mapNotNull { token ->
+          if (AppFolder.isFolderToken(token)) {
+            val fId = AppFolder.folderIdFromToken(token)
+            val folder = folderById[fId] ?: return@mapNotNull null
+            val folderApps = folder.packageNames.mapNotNull { byPackage[it] }
+            RowTileEntry.FolderEntry(folder = folder, apps = folderApps)
+          } else {
+            val app = byPackage[token] ?: return@mapNotNull null
+            RowTileEntry.AppEntry(app)
+          }
+        }
         ResolvedAppRow(
           id = row.id,
           title = row.title.ifBlank { "Row" },
-          apps = row.packageNames.mapNotNull { byPackage[it] },
+          apps = resolvedEntries.filterIsInstance<RowTileEntry.AppEntry>().map { it.app },
+          entries = resolvedEntries,
           tileShape = TileAspectShape.fromId(row.tileShape),
         )
       }

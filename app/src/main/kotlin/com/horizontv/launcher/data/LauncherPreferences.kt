@@ -2,6 +2,7 @@ package com.horizontv.launcher.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.horizontv.launcher.model.AppFolder
 import com.horizontv.launcher.model.AppRow
 import com.horizontv.launcher.model.ClockFontStyle
 import com.horizontv.launcher.model.ClockFontWeight
@@ -56,6 +57,18 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       rowsArr.put(obj)
     }
     root.put("rows", rowsArr)
+
+    val foldersArr = JSONArray()
+    settings.folders.forEach { folder ->
+      val obj = JSONObject()
+      obj.put("id", folder.id)
+      obj.put("title", folder.title)
+      val pkgs = JSONArray()
+      folder.packageNames.forEach { pkgs.put(it) }
+      obj.put("packages", pkgs)
+      foldersArr.put(obj)
+    }
+    root.put("folders", foldersArr)
 
     val hiddenArr = JSONArray()
     settings.hiddenPackages.sorted().forEach { hiddenArr.put(it) }
@@ -165,6 +178,13 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     }
     root.put("tmdb", tmdbObj)
 
+    val smbObj = JSONObject().apply {
+      put("shareUrl", settings.smbShareUrl)
+      put("username", settings.smbUsername)
+      put("password", settings.smbPassword)
+    }
+    root.put("smb", smbObj)
+
     val redditObj = JSONObject().apply {
       put("sort", settings.redditSort)
       val subs = JSONArray()
@@ -258,11 +278,15 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     val emby = root.optJSONObject("emby")
     val tmdb = root.optJSONObject("tmdb")
     val reddit = root.optJSONObject("reddit")
+    val smb = root.optJSONObject("smb")
     val w = root.optJSONObject("weather")
     val ss = root.optJSONObject("screensaver")
 
+    val folders = if (root.has("folders")) decodeFoldersArray(root.optJSONArray("folders")) else existing.folders
+
     existing.copy(
       rows = rows,
+      folders = folders,
       hiddenPackages = hidden,
       customLabels = customLabels,
       themeId = root.optString("themeId", existing.themeId).ifBlank { existing.themeId },
@@ -420,6 +444,9 @@ object SettingsBackupCodec : SettingsBackupSerializer {
         existing.redditCustomSubreddits
       },
       redditSort = RedditSort.fromId(reddit?.optString("sort", existing.redditSort) ?: existing.redditSort).id,
+      smbShareUrl = smb?.optString("shareUrl", existing.smbShareUrl) ?: existing.smbShareUrl,
+      smbUsername = smb?.optString("username", existing.smbUsername) ?: existing.smbUsername,
+      smbPassword = smb?.optString("password", existing.smbPassword) ?: existing.smbPassword,
       weatherEnabled = w?.optBoolean("enabled", existing.weatherEnabled) ?: existing.weatherEnabled,
       weatherLocationName = w?.optString("locationName", existing.weatherLocationName)
         ?: existing.weatherLocationName,
@@ -482,6 +509,27 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     }
   }
 
+  internal fun decodeFoldersArray(array: JSONArray?): List<AppFolder> {
+    if (array == null) return emptyList()
+    return buildList {
+      for (i in 0 until array.length()) {
+        val obj = array.optJSONObject(i) ?: continue
+        val id = obj.optString("id", "").trim().ifEmpty { "folder_$i" }
+        val title = obj.optString("title", "").trim().ifEmpty { "Folder ${i + 1}" }
+        val pkgsJson = obj.optJSONArray("packages")
+        val pkgs = buildList {
+          if (pkgsJson != null) {
+            for (j in 0 until pkgsJson.length()) {
+              val p = pkgsJson.optString(j, "").trim()
+              if (p.isNotEmpty()) add(p)
+            }
+          }
+        }.distinct()
+        add(AppFolder(id = id, title = title, packageNames = pkgs))
+      }
+    }
+  }
+
   internal fun decodeRowsArray(array: JSONArray?): List<AppRow> {
     if (array == null) return emptyList()
     return buildList {
@@ -514,9 +562,11 @@ class LauncherPreferences(context: Context) : SettingsStore {
     val customLabels = decodeStringMap(prefs.getString(KEY_CUSTOM_LABELS, null))
     val customIconPaths = decodeStringMap(prefs.getString(KEY_CUSTOM_ICONS, null))
     val rows = loadRows()
+    val folders = loadFolders()
 
     return LauncherSettings(
       rows = rows,
+      folders = folders,
       hiddenPackages = hidden,
       customLabels = customLabels,
       customIconPaths = customIconPaths,
@@ -556,6 +606,10 @@ class LauncherPreferences(context: Context) : SettingsStore {
         ?: LauncherSettings.DEFAULT_REDDIT_SUBREDDITS,
       redditCustomSubreddits = prefs.getStringSet(KEY_REDDIT_CUSTOM_SUBREDDITS, emptySet())?.toSet() ?: emptySet(),
       redditSort = RedditSort.fromId(prefs.getString(KEY_REDDIT_SORT, RedditSort.TOP_MONTH.id)).id,
+      localWallpaperFolderUri = prefs.getString(KEY_LOCAL_WALLPAPER_FOLDER, null),
+      smbShareUrl = prefs.getString(KEY_SMB_SHARE_URL, "") ?: "",
+      smbUsername = prefs.getString(KEY_SMB_USERNAME, "") ?: "",
+      smbPassword = prefs.getString(KEY_SMB_PASSWORD, "") ?: "",
       wallpaperProviderConfigs = decodeProviderConfigsJson(prefs.getString(KEY_WALLPAPER_PROVIDER_CONFIGS, null)),
       weatherEnabled = prefs.getBoolean(KEY_WEATHER_ENABLED, false),
       weatherLocationName = prefs.getString(KEY_WEATHER_LOCATION, "") ?: "",
@@ -647,6 +701,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
     }
     prefs.edit()
       .putString(KEY_CUSTOM_ROWS, encodeRows(safeRows))
+      .putString(KEY_APP_FOLDERS, encodeFolders(settings.folders))
       .putStringSet(KEY_HIDDEN, settings.hiddenPackages)
       .putString(KEY_CUSTOM_LABELS, encodeStringMap(settings.customLabels))
       .putString(KEY_CUSTOM_ICONS, encodeStringMap(settings.customIconPaths))
@@ -679,6 +734,10 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putStringSet(KEY_REDDIT_SUBREDDITS, settings.redditSubreddits)
       .putStringSet(KEY_REDDIT_CUSTOM_SUBREDDITS, settings.redditCustomSubreddits)
       .putString(KEY_REDDIT_SORT, settings.redditSort)
+      .putString(KEY_LOCAL_WALLPAPER_FOLDER, settings.localWallpaperFolderUri)
+      .putString(KEY_SMB_SHARE_URL, settings.smbShareUrl)
+      .putString(KEY_SMB_USERNAME, settings.smbUsername)
+      .putString(KEY_SMB_PASSWORD, settings.smbPassword)
       .putString(KEY_WALLPAPER_PROVIDER_CONFIGS, encodeProviderConfigs(settings.wallpaperProviderConfigs))
       .putBoolean(KEY_WEATHER_ENABLED, settings.weatherEnabled)
       .putString(KEY_WEATHER_LOCATION, settings.weatherLocationName)
@@ -778,6 +837,25 @@ class LauncherPreferences(context: Context) : SettingsStore {
     )
   }
 
+  private fun loadFolders(): List<AppFolder> {
+    val raw = prefs.getString(KEY_APP_FOLDERS, null) ?: return emptyList()
+    return runCatching { SettingsBackupCodec.decodeFoldersArray(JSONArray(raw)) }.getOrDefault(emptyList())
+  }
+
+  private fun encodeFolders(folders: List<AppFolder>): String {
+    val array = JSONArray()
+    folders.forEach { folder ->
+      val obj = JSONObject()
+      obj.put("id", folder.id)
+      obj.put("title", folder.title)
+      val pkgs = JSONArray()
+      folder.packageNames.forEach { pkgs.put(it) }
+      obj.put("packages", pkgs)
+      array.put(obj)
+    }
+    return array.toString()
+  }
+
   private fun encodeRows(rows: List<AppRow>): String {
     val array = JSONArray()
     rows.forEach { row ->
@@ -860,6 +938,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val PREFS_NAME = "horizon_tv_launcher_prefs"
     private const val DELIMITER = "|"
     private const val KEY_CUSTOM_ROWS = "custom_rows_json"
+    private const val KEY_APP_FOLDERS = "app_folders_json"
     private const val KEY_LEGACY_FAVORITES = "favorite_packages"
     private const val KEY_LEGACY_FAVORITES_TITLE = "favorites_title"
     private const val KEY_HIDDEN = "hidden_packages"
@@ -894,6 +973,10 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_REDDIT_SUBREDDITS = "reddit_subreddits"
     private const val KEY_REDDIT_CUSTOM_SUBREDDITS = "reddit_custom_subreddits"
     private const val KEY_REDDIT_SORT = "reddit_sort"
+    private const val KEY_LOCAL_WALLPAPER_FOLDER = "local_wallpaper_folder_uri"
+    private const val KEY_SMB_SHARE_URL = "smb_share_url"
+    private const val KEY_SMB_USERNAME = "smb_username"
+    private const val KEY_SMB_PASSWORD = "smb_password"
     private const val KEY_WALLPAPER_PROVIDER_CONFIGS = "wallpaper_provider_configs_json"
     private const val KEY_WEATHER_ENABLED = "weather_enabled"
     private const val KEY_WEATHER_LOCATION = "weather_location_name"

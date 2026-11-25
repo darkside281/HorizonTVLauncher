@@ -88,6 +88,7 @@ import com.horizontv.launcher.model.LauncherSettings
 import com.horizontv.launcher.model.LauncherUiState
 import com.horizontv.launcher.model.MediaWallpaperProvider
 import com.horizontv.launcher.model.ResolvedAppRow
+import com.horizontv.launcher.model.RowTileEntry
 import com.horizontv.launcher.model.ScreensaverMode
 import com.horizontv.launcher.model.SearchProviderFilter
 import com.horizontv.launcher.model.StreamingOffer
@@ -106,6 +107,8 @@ import com.horizontv.launcher.ui.components.PinDialog
 import com.horizontv.launcher.ui.components.SetupWizardDialog
 import com.horizontv.launcher.ui.components.WebCompanionDialog
 import com.horizontv.launcher.ui.components.FavoriteBannerCard
+import com.horizontv.launcher.ui.components.FolderBannerCard
+import com.horizontv.launcher.ui.components.FolderPopupDialog
 import com.horizontv.launcher.ui.components.JellyfinSetupDialog
 import com.horizontv.launcher.ui.components.LauncherTopBar
 import com.horizontv.launcher.ui.components.RenameTextDialog
@@ -185,6 +188,8 @@ fun LauncherScreen(
   onClearWallpaper: () -> Unit,
   onSetWallpaperDim: (Float) -> Unit,
   onToggleWallpaperKenBurns: () -> Unit = {},
+  onPickLocalWallpaperFolder: () -> Unit = {},
+  onClearLocalWallpaperFolder: () -> Unit = {},
   onSelectWallpaperProvider: (MediaWallpaperProvider) -> Unit,
   onOpenJellyfinSetup: () -> Unit,
   onCloseJellyfinSetup: () -> Unit,
@@ -245,6 +250,18 @@ fun LauncherScreen(
   onEnableRedditWallpapersFromWizard: () -> Unit = {},
   onStartWebCompanion: () -> Unit = {},
   onStopWebCompanion: () -> Unit = {},
+  onOpenCreateFolder: () -> Unit = {},
+  onCloseCreateFolder: () -> Unit = {},
+  onCreateFolder: (String) -> Unit = {},
+  onOpenFolder: (String) -> Unit = {},
+  onCloseFolder: () -> Unit = {},
+  onOpenEditFolderApps: (String) -> Unit = {},
+  onCloseEditFolderApps: () -> Unit = {},
+  onToggleAppInFolder: (String, String) -> Unit = { _, _ -> },
+  onOpenRenameFolder: (String) -> Unit = {},
+  onCloseRenameFolder: () -> Unit = {},
+  onRenameFolder: (String, String) -> Unit = { _, _ -> },
+  onDeleteFolder: (String) -> Unit = {},
   onSetTileOpacity: (Float) -> Unit = {},
   onSetTileSpacing: (String) -> Unit = {},
   onSetTileCornerStyle: (String) -> Unit = {},
@@ -366,9 +383,9 @@ fun LauncherScreen(
   }
 
   fun rowFirstTileRequester(row: ResolvedAppRow): FocusRequester {
-    val firstApp = row.apps.firstOrNull()
-    return if (firstApp != null) {
-      rowCardFocusRequesters.getOrPut("${row.id}:${firstApp.packageName}") { FocusRequester() }
+    val firstEntry = row.entries.firstOrNull()
+    return if (firstEntry != null) {
+      rowCardFocusRequesters.getOrPut("${row.id}:${firstEntry.key}") { FocusRequester() }
     } else {
       rowAddFocusRequesters.getOrPut(row.id) { FocusRequester() }
     }
@@ -379,20 +396,20 @@ fun LauncherScreen(
   fun rowEntryRequester(row: ResolvedAppRow): FocusRequester {
     val listState = rowListStates[row.id]
     val visibleIndices = listState?.layoutInfo?.visibleItemsInfo?.map { it.index }.orEmpty()
-    val lastPkg = lastFocusedPackageByRow[row.id]
-    if (lastPkg != null) {
-      val lastIdx = row.apps.indexOfFirst { it.packageName == lastPkg }
+    val lastKey = lastFocusedPackageByRow[row.id]
+    if (lastKey != null) {
+      val lastIdx = row.entries.indexOfFirst { it.key == lastKey }
       if (lastIdx >= 0 && (visibleIndices.isEmpty() || lastIdx in visibleIndices)) {
-        return rowCardFocusRequesters.getOrPut("${row.id}:$lastPkg") { FocusRequester() }
+        return rowCardFocusRequesters.getOrPut("${row.id}:$lastKey") { FocusRequester() }
       }
     }
     val firstVisibleIdx = listState?.firstVisibleItemIndex ?: 0
-    val visibleApp = row.apps.getOrNull(firstVisibleIdx)
-    if (visibleApp != null) {
-      return rowCardFocusRequesters.getOrPut("${row.id}:${visibleApp.packageName}") { FocusRequester() }
+    val visibleEntry = row.entries.getOrNull(firstVisibleIdx)
+    if (visibleEntry != null) {
+      return rowCardFocusRequesters.getOrPut("${row.id}:${visibleEntry.key}") { FocusRequester() }
     }
-    val hasAddTile = (state.settings.showAddAppTile && !state.settings.lockHomeLayout) || row.apps.isEmpty()
-    if (firstVisibleIdx >= row.apps.size && hasAddTile) {
+    val hasAddTile = (state.settings.showAddAppTile && !state.settings.lockHomeLayout) || row.entries.isEmpty()
+    if (firstVisibleIdx >= row.entries.size && hasAddTile) {
       return rowAddFocusRequesters.getOrPut(row.id) { FocusRequester() }
     }
     return rowFirstTileRequester(row)
@@ -778,6 +795,8 @@ fun LauncherScreen(
                       requestDockScroll(0)
                     },
                     onLaunchApp = onLaunchApp,
+                    onOpenFolder = onOpenFolder,
+                    onStartReorderFolder = { token -> onMoveAppInRow(heroRow.id, token, 0) },
                     onOpenAppMenu = { app -> onOpenAppMenu(app, heroRow.id) },
                     onMoveApp = { pkg, delta -> onMoveAppInRow(heroRow.id, pkg, delta) },
                     onFinishReorder = onStopReordering,
@@ -833,6 +852,8 @@ fun LauncherScreen(
                         requestDockScroll(rowYOffsets[extraRow.id] ?: 0)
                       },
                       onLaunchApp = onLaunchApp,
+                      onOpenFolder = onOpenFolder,
+                      onStartReorderFolder = { token -> onMoveAppInRow(extraRow.id, token, 0) },
                       onOpenAppMenu = { app -> onOpenAppMenu(app, extraRow.id) },
                       onMoveApp = { pkg, delta -> onMoveAppInRow(extraRow.id, pkg, delta) },
                       onFinishReorder = onStopReordering,
@@ -1245,6 +1266,8 @@ fun LauncherScreen(
         onClearWallpaper = onClearWallpaper,
         onSetWallpaperDim = onSetWallpaperDim,
         onToggleWallpaperKenBurns = onToggleWallpaperKenBurns,
+        onPickLocalWallpaperFolder = onPickLocalWallpaperFolder,
+        onClearLocalWallpaperFolder = onClearLocalWallpaperFolder,
         onSelectWallpaperProvider = onSelectWallpaperProvider,
         onOpenJellyfinSetup = onOpenJellyfinSetup,
         onToggleJellyfinSlideshow = onToggleJellyfinSlideshow,
@@ -1308,6 +1331,10 @@ fun LauncherScreen(
         onUnlockAppPin = onUnlockAppPin,
         onOpenSetupWizard = onOpenSetupWizard,
         onStartWebCompanion = onStartWebCompanion,
+        onCreateFolder = onOpenCreateFolder,
+        onEditFolderApps = onOpenEditFolderApps,
+        onRenameFolder = onOpenRenameFolder,
+        onDeleteFolder = onDeleteFolder,
         onOpenHomeSettings = onOpenHomeSettings,
         onOpenPlayStore = onOpenPlayStore,
         onBackupConfig = onBackupConfig,
@@ -1404,6 +1431,76 @@ fun LauncherScreen(
       )
     }
 
+    val openFolderId = state.openFolderId
+    if (openFolderId != null) {
+      val folder = state.settings.folders.firstOrNull { it.id == openFolderId }
+      if (folder != null) {
+        val byPkg = state.allVisibleApps.associateBy { it.packageName }
+        val folderApps = folder.packageNames.mapNotNull { byPkg[it] }
+        FolderPopupDialog(
+          folder = folder,
+          apps = folderApps,
+          accent = accent,
+          cardSurface = theme.cardSurface,
+          isLockedLayout = state.settings.lockHomeLayout,
+          isAppPinLocked = { pkg -> state.settings.isAppPinLocked(pkg) },
+          onLaunchApp = onLaunchApp,
+          onOpenAppMenu = { app -> onOpenAppMenu(app, null) },
+          onEditApps = { onOpenEditFolderApps(folder.id) },
+          onRenameFolder = { onOpenRenameFolder(folder.id) },
+          onDeleteFolder = { onDeleteFolder(folder.id) },
+          onDismiss = onCloseFolder,
+        )
+      }
+    }
+
+    if (state.isCreatingFolder) {
+      RenameTextDialog(
+        title = "New App Folder",
+        subtitle = "Group related apps (e.g. UK Catch-Up, Games, Utilities) into a 2×2 tile",
+        initialValue = "",
+        placeholder = "e.g. UK Catch-Up, Games, Utilities",
+        resetLabel = "",
+        accent = accent,
+        onSave = onCreateFolder,
+        onReset = {},
+        onDismiss = onCloseCreateFolder,
+      )
+    }
+
+    val renamingFolderId = state.renamingFolderId
+    if (renamingFolderId != null) {
+      val folder = state.settings.folders.firstOrNull { it.id == renamingFolderId }
+      if (folder != null) {
+        RenameTextDialog(
+          title = "Rename Folder",
+          subtitle = "Enter a new name for this app folder",
+          initialValue = folder.title,
+          placeholder = "Folder name",
+          resetLabel = "",
+          accent = accent,
+          onSave = { newName -> onRenameFolder(folder.id, newName) },
+          onReset = {},
+          onDismiss = onCloseRenameFolder,
+        )
+      }
+    }
+
+    val editingFolderId = state.editingFolderAppsId
+    if (editingFolderId != null) {
+      val folder = state.settings.folders.firstOrNull { it.id == editingFolderId }
+      if (folder != null) {
+        AddFavoritePickerDialog(
+          rowTitle = "Folder: ${folder.title}",
+          allApps = state.allVisibleApps,
+          favoritePackages = folder.packageNames.toSet(),
+          accent = accent,
+          onToggleFavorite = { pkg -> onToggleAppInFolder(folder.id, pkg) },
+          onDismiss = onCloseEditFolderApps,
+        )
+      }
+    }
+
     // Full-Screen Idle / Preview Screensaver Overlay
     AnimatedVisibility(
       visible = state.isScreensaverActive,
@@ -1441,6 +1538,8 @@ private fun CustomAppRowSection(
   addTileFocusRequester: FocusRequester,
   onAppFocused: (AppInfo?) -> Unit,
   onLaunchApp: (AppInfo) -> Unit,
+  onOpenFolder: (String) -> Unit = {},
+  onStartReorderFolder: (String) -> Unit = {},
   onOpenAppMenu: (AppInfo) -> Unit,
   onMoveApp: (String, Int) -> Unit,
   onFinishReorder: () -> Unit,
@@ -1470,14 +1569,14 @@ private fun CustomAppRowSection(
           color = Color.White,
         )
         Text(
-          text = "(${row.apps.size})",
+          text = "(${row.entries.size})",
           style = MaterialTheme.typography.bodyMedium,
           color = Color.White.copy(alpha = 0.58f),
         )
       }
     }
 
-    val hasAddTile = showAddTile || row.apps.isEmpty()
+    val hasAddTile = showAddTile || row.entries.isEmpty()
     val verticalPad = if (compactVerticalPadding) 14.dp else 22.dp
     LazyRow(
       state = listState,
@@ -1485,35 +1584,69 @@ private fun CustomAppRowSection(
       contentPadding = PaddingValues(top = verticalPad, bottom = verticalPad, start = 36.dp, end = 36.dp),
     ) {
       itemsIndexed(
-        items = row.apps,
-        key = { _, app -> "${row.id}_${app.packageName}" },
-      ) { index, app ->
-        FavoriteBannerCard(
-          app = app,
-          accent = accent,
-          cardSurface = cardSurface,
-          isReordering = reorderingPackage == app.packageName,
-          canMoveLeft = index > 0,
-          canMoveRight = index < row.apps.lastIndex,
-          onFocused = { onAppFocused(app) },
-          onLaunch = { onLaunchApp(app) },
-          onOpenMenu = { onOpenAppMenu(app) },
-          onMoveLeft = { onMoveApp(app.packageName, -1) },
-          onMoveRight = { onMoveApp(app.packageName, +1) },
-          onFinishReorder = onFinishReorder,
-          tileSize = tileSize,
-          tileShape = row.tileShape,
-          cornerStyle = cornerStyle,
-          focusStyle = focusStyle,
-          showTitle = showTileTitles,
-          isPinLocked = isAppPinLocked(app.packageName),
-          tileOpacity = tileOpacity,
-          blockLeft = index == 0,
-          blockRight = index == row.apps.lastIndex && !hasAddTile,
-          cardFocusRequester = focusRequesterFor(app.packageName),
-          upFocusRequester = upFocusRequester,
-          downFocusRequester = downFocusRequester,
-        )
+        items = row.entries,
+        key = { _, entry -> "${row.id}_${entry.key}" },
+      ) { index, entry ->
+        when (entry) {
+          is RowTileEntry.AppEntry -> {
+            val app = entry.app
+            FavoriteBannerCard(
+              app = app,
+              accent = accent,
+              cardSurface = cardSurface,
+              isReordering = reorderingPackage == app.packageName,
+              canMoveLeft = index > 0,
+              canMoveRight = index < row.entries.lastIndex,
+              onFocused = { onAppFocused(app) },
+              onLaunch = { onLaunchApp(app) },
+              onOpenMenu = { onOpenAppMenu(app) },
+              onMoveLeft = { onMoveApp(app.packageName, -1) },
+              onMoveRight = { onMoveApp(app.packageName, +1) },
+              onFinishReorder = onFinishReorder,
+              tileSize = tileSize,
+              tileShape = row.tileShape,
+              cornerStyle = cornerStyle,
+              focusStyle = focusStyle,
+              showTitle = showTileTitles,
+              isPinLocked = isAppPinLocked(app.packageName),
+              tileOpacity = tileOpacity,
+              blockLeft = index == 0,
+              blockRight = index == row.entries.lastIndex && !hasAddTile,
+              cardFocusRequester = focusRequesterFor(app.packageName),
+              upFocusRequester = upFocusRequester,
+              downFocusRequester = downFocusRequester,
+            )
+          }
+
+          is RowTileEntry.FolderEntry -> {
+            FolderBannerCard(
+              folder = entry.folder,
+              apps = entry.apps,
+              accent = accent,
+              cardSurface = cardSurface,
+              isReordering = reorderingPackage == entry.key,
+              canMoveLeft = index > 0,
+              canMoveRight = index < row.entries.lastIndex,
+              onFocused = { onAppFocused(null) },
+              onOpenFolder = { onOpenFolder(entry.folder.id) },
+              onStartReorder = { onStartReorderFolder(entry.key) },
+              onMoveLeft = { onMoveApp(entry.key, -1) },
+              onMoveRight = { onMoveApp(entry.key, +1) },
+              onFinishReorder = onFinishReorder,
+              tileSize = tileSize,
+              tileShape = row.tileShape,
+              cornerStyle = cornerStyle,
+              focusStyle = focusStyle,
+              showTitle = showTileTitles,
+              tileOpacity = tileOpacity,
+              blockLeft = index == 0,
+              blockRight = index == row.entries.lastIndex && !hasAddTile,
+              cardFocusRequester = focusRequesterFor(entry.key),
+              upFocusRequester = upFocusRequester,
+              downFocusRequester = downFocusRequester,
+            )
+          }
+        }
       }
       if (hasAddTile) {
         item(key = "${row.id}_add_tile") {
@@ -1528,7 +1661,7 @@ private fun CustomAppRowSection(
             focusStyle = focusStyle,
             showTitle = showTileTitles,
             tileOpacity = tileOpacity,
-            blockLeft = row.apps.isEmpty(),
+            blockLeft = row.entries.isEmpty(),
             blockRight = true,
             cardFocusRequester = addTileFocusRequester,
             upFocusRequester = upFocusRequester,

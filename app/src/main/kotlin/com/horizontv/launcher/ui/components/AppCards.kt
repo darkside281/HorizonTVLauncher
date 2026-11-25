@@ -755,7 +755,7 @@ fun AppIconBadge(
   }
 }
 
-private class TvSelectKeyController(
+internal class TvSelectKeyController(
   private val scope: CoroutineScope,
 ) {
   private var holdJob: Job? = null
