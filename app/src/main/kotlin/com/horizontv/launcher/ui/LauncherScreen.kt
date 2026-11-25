@@ -75,6 +75,7 @@ import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.ClockFontStyle
 import com.horizontv.launcher.model.ClockFontWeight
 import com.horizontv.launcher.model.ClockStyle
+import com.horizontv.launcher.model.ContinueWatchingItem
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.HomeTileSpacing
@@ -103,6 +104,7 @@ import com.horizontv.launcher.ui.components.AmbientBackground
 import com.horizontv.launcher.ui.components.AppActionDialog
 import com.horizontv.launcher.ui.components.AppGridTile
 import com.horizontv.launcher.ui.components.AppUpdateDialog
+import com.horizontv.launcher.ui.components.ContinueWatchingRowSection
 import com.horizontv.launcher.ui.components.PinDialog
 import com.horizontv.launcher.ui.components.SetupWizardDialog
 import com.horizontv.launcher.ui.components.WebCompanionDialog
@@ -234,6 +236,8 @@ fun LauncherScreen(
   onToggleJustWatchShowRottenTomatoes: () -> Unit = {},
   onToggleJustWatchShowAgeRating: () -> Unit = {},
   onToggleShowAllAppsSection: () -> Unit,
+  onToggleShowContinueWatchingRow: () -> Unit = {},
+  onOpenContinueWatchingItem: (ContinueWatchingItem) -> Unit = {},
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTileTitles: () -> Unit,
   onToggleShowTvInputsButton: () -> Unit = {},
@@ -575,7 +579,7 @@ fun LauncherScreen(
       val singleRowDockHeight = (
         maxRowTileHeightDp +
           (if (state.settings.showTileTitles) 108 else 82) -
-          (if (minimalistMode) 36 else 0)
+          (if (minimalistMode) 16 else 0)
         ).dp
       var allAppsGridY by remember { mutableIntStateOf(0) }
 
@@ -757,11 +761,19 @@ fun LauncherScreen(
             ) {
               CompositionLocalProvider(LocalBringIntoViewSpec provides defaultBringIntoViewSpec) {
                 // Primary Row (Row 0)
-                val heroDownTarget = if (extraRows.isNotEmpty()) {
-                  rowEntryRequester(extraRows.first())
+                val showCwRow = state.settings.showContinueWatchingRow && state.continueWatchingItems.isNotEmpty()
+                val cwEntryRequester = if (showCwRow) {
+                  val firstCwId = state.continueWatchingItems.first().itemId
+                  rowCardFocusRequesters.getOrPut("cw:$firstCwId") { FocusRequester() }
                 } else {
-                  firstAllAppsTarget
+                  null
                 }
+                val afterHeroTarget = when {
+                  cwEntryRequester != null -> cwEntryRequester
+                  extraRows.isNotEmpty() -> rowEntryRequester(extraRows.first())
+                  else -> firstAllAppsTarget
+                }
+                val heroDownTarget = afterHeroTarget
                 Box(
                   modifier = Modifier
                     .fillMaxWidth()
@@ -813,9 +825,53 @@ fun LauncherScreen(
                   )
                 }
 
+                // Optional Continue Watching / Up Next Row (Jellyfin / Plex / Emby)
+                if (showCwRow) {
+                  val cwDownTarget = if (extraRows.isNotEmpty()) {
+                    rowEntryRequester(extraRows.first())
+                  } else {
+                    firstAllAppsTarget
+                  }
+                  Box(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .onGloballyPositioned { coords ->
+                        rowYOffsets["__cw__"] = coords.positionInParent().y.toInt()
+                      },
+                  ) {
+                    ContinueWatchingRowSection(
+                      items = state.continueWatchingItems,
+                      accent = accent,
+                      cardSurface = theme.cardSurface,
+                      tileSize = tileSize,
+                      listState = rowListStates.getOrPut("__cw__") { LazyListState() },
+                      upFocusRequester = rowEntryRequester(heroRow),
+                      downFocusRequester = cwDownTarget,
+                      focusRequesterFor = { itemId ->
+                        rowCardFocusRequesters.getOrPut("cw:$itemId") { FocusRequester() }
+                      },
+                      onFocused = {
+                        isHeroEntryFocused = false
+                        requestDockScroll(rowYOffsets["__cw__"] ?: 0)
+                      },
+                      onClickItem = onOpenContinueWatchingItem,
+                      compactVerticalPadding = minimalistMode,
+                      cornerStyle = tileCornerStyle,
+                      focusStyle = tileFocusStyle,
+                      tileOpacity = tileOpacity,
+                      tileSpacingDp = tileSpacingDp,
+                    )
+                  }
+                }
+
                 // Extra Custom Rows (Rows 1..N) with explicit Up/Down focus chain
                 extraRows.forEachIndexed { extraIdx, extraRow ->
                   val prevRow = if (extraIdx == 0) heroRow else extraRows[extraIdx - 1]
+                  val extraUpTarget = if (extraIdx == 0 && cwEntryRequester != null) {
+                    cwEntryRequester
+                  } else {
+                    rowEntryRequester(prevRow)
+                  }
                   val nextTarget = if (extraIdx < extraRows.lastIndex) {
                     rowEntryRequester(extraRows[extraIdx + 1])
                   } else {
@@ -839,7 +895,7 @@ fun LauncherScreen(
                       } else {
                         null
                       },
-                      upFocusRequester = rowEntryRequester(prevRow),
+                      upFocusRequester = extraUpTarget,
                       downFocusRequester = nextTarget,
                       focusRequesterFor = { pkg ->
                         rowCardFocusRequesters.getOrPut("${extraRow.id}:$pkg") { FocusRequester() }
@@ -1302,6 +1358,7 @@ fun LauncherScreen(
         onToggleJustWatchShowRottenTomatoes = onToggleJustWatchShowRottenTomatoes,
         onToggleJustWatchShowAgeRating = onToggleJustWatchShowAgeRating,
         onToggleShowAllAppsSection = onToggleShowAllAppsSection,
+        onToggleShowContinueWatchingRow = onToggleShowContinueWatchingRow,
         onToggleShowAddAppTile = onToggleShowAddAppTile,
         onToggleShowTileTitles = onToggleShowTileTitles,
         onToggleShowTvInputsButton = onToggleShowTvInputsButton,

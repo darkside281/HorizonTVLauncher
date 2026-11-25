@@ -91,6 +91,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("showNonLeanbackApps", settings.showNonLeanbackApps)
     root.put("showSearchBar", settings.showSearchBar)
     root.put("showAllAppsSection", settings.showAllAppsSection)
+    root.put("showContinueWatchingRow", settings.showContinueWatchingRow)
     root.put("showAddAppTile", settings.showAddAppTile)
     root.put("showTileTitles", settings.showTileTitles)
     root.put("showTvInputsButton", settings.showTvInputsButton)
@@ -304,6 +305,7 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       showNonLeanbackApps = root.optBoolean("showNonLeanbackApps", existing.showNonLeanbackApps),
       showSearchBar = root.optBoolean("showSearchBar", existing.showSearchBar),
       showAllAppsSection = root.optBoolean("showAllAppsSection", existing.showAllAppsSection),
+      showContinueWatchingRow = root.optBoolean("showContinueWatchingRow", existing.showContinueWatchingRow),
       showAddAppTile = root.optBoolean("showAddAppTile", existing.showAddAppTile),
       showTileTitles = root.optBoolean("showTileTitles", existing.showTileTitles),
       showTvInputsButton = root.optBoolean("showTvInputsButton", existing.showTvInputsButton),
@@ -632,6 +634,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       showNonLeanbackApps = prefs.getBoolean(KEY_SHOW_NON_LEANBACK, true),
       showSearchBar = prefs.getBoolean(KEY_SHOW_SEARCH_BAR, true),
       showAllAppsSection = prefs.getBoolean(KEY_SHOW_ALL_APPS, true),
+      showContinueWatchingRow = prefs.getBoolean(KEY_SHOW_CONTINUE_WATCHING, false),
       showAddAppTile = prefs.getBoolean(KEY_SHOW_ADD_APP_TILE, true),
       showTileTitles = prefs.getBoolean(KEY_SHOW_TILE_TITLES, true),
       showTvInputsButton = prefs.getBoolean(KEY_SHOW_TV_INPUTS, true),
@@ -758,6 +761,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
       .putBoolean(KEY_SHOW_NON_LEANBACK, settings.showNonLeanbackApps)
       .putBoolean(KEY_SHOW_SEARCH_BAR, settings.showSearchBar)
       .putBoolean(KEY_SHOW_ALL_APPS, settings.showAllAppsSection)
+      .putBoolean(KEY_SHOW_CONTINUE_WATCHING, settings.showContinueWatchingRow)
       .putBoolean(KEY_SHOW_ADD_APP_TILE, settings.showAddAppTile)
       .putBoolean(KEY_SHOW_TILE_TITLES, settings.showTileTitles)
       .putBoolean(KEY_SHOW_TV_INPUTS, settings.showTvInputsButton)
@@ -997,6 +1001,7 @@ class LauncherPreferences(context: Context) : SettingsStore {
     private const val KEY_SHOW_NON_LEANBACK = "show_non_leanback"
     private const val KEY_SHOW_SEARCH_BAR = "show_search_bar"
     private const val KEY_SHOW_ALL_APPS = "show_all_apps_section"
+    private const val KEY_SHOW_CONTINUE_WATCHING = "show_continue_watching_row"
     private const val KEY_SHOW_ADD_APP_TILE = "show_add_app_tile"
     private const val KEY_SHOW_TILE_TITLES = "show_tile_titles"
     private const val KEY_SHOW_TV_INPUTS = "show_tv_inputs_button"

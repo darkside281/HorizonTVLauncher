@@ -343,6 +343,18 @@ data class JellyfinSearchItem(
     get() = if (itemType.equals("Series", ignoreCase = true)) "TV Show" else "Movie"
 }
 
+data class ContinueWatchingItem(
+  val itemId: String,
+  val provider: MediaWallpaperProvider,
+  val title: String,
+  val subtitle: String,
+  val badge: String,
+  val remainingLabel: String,
+  val progress: Float,
+  val imageUrl: String?,
+  val thumbnail: ImageBitmap? = null,
+)
+
 enum class NetworkType {
   WIFI,
   ETHERNET,
@@ -684,6 +696,7 @@ data class LauncherSettings(
   val showNonLeanbackApps: Boolean = true,
   val showSearchBar: Boolean = true,
   val showAllAppsSection: Boolean = true,
+  val showContinueWatchingRow: Boolean = false,
   val showAddAppTile: Boolean = true,
   val showTileTitles: Boolean = true,
   val showTvInputsButton: Boolean = true,
@@ -1012,6 +1025,7 @@ data class LauncherUiState(
   val renamingFolderId: String? = null,
   val isCreatingFolder: Boolean = false,
   val webCompanionInfo: WebCompanionInfo? = null,
+  val continueWatchingItems: List<ContinueWatchingItem> = emptyList(),
   val setupProviderDialog: MediaWallpaperProvider? = null,
   val isAddingSubreddit: Boolean = false,
   val isTestingJellyfin: Boolean = false,

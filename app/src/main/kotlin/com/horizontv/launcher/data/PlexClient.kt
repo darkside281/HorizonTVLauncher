@@ -3,10 +3,12 @@ package com.horizontv.launcher.data
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.horizontv.launcher.model.ContinueWatchingItem
 import com.horizontv.launcher.model.JellyfinBackdrop
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JellyfinSearchItem
+import com.horizontv.launcher.model.MediaWallpaperProvider
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -23,6 +25,101 @@ import org.json.JSONObject
  * search pipeline as Jellyfin & Emby.
  */
 class PlexClient : JellyfinDataSource {
+
+  override suspend fun fetchContinueWatching(
+    serverUrl: String,
+    token: String,
+    userId: String,
+    provider: MediaWallpaperProvider,
+    limit: Int,
+  ): Result<List<ContinueWatchingItem>> = withContext(Dispatchers.IO) {
+    runCatching {
+      val baseUrl = JellyfinClient.normalizeUrl(serverUrl)
+      if (baseUrl.isEmpty() || token.isBlank()) return@runCatching emptyList()
+
+      val raw = runCatching {
+        plexGetJson("$baseUrl/hubs/continueWatching?count=$limit", token)
+      }.getOrNull() ?: runCatching {
+        plexGetJson("$baseUrl/library/onDeck?X-Plex-Container-Size=$limit", token)
+      }.getOrNull() ?: return@runCatching emptyList()
+
+      val root = JSONObject(raw).optJSONObject("MediaContainer") ?: return@runCatching emptyList()
+      val metadataList = mutableListOf<JSONObject>()
+      val directMeta = root.optJSONArray("Metadata")
+      if (directMeta != null) {
+        for (i in 0 until directMeta.length()) directMeta.optJSONObject(i)?.let(metadataList::add)
+      }
+      val hubs = root.optJSONArray("Hub")
+      if (hubs != null) {
+        for (h in 0 until hubs.length()) {
+          val hubMeta = hubs.optJSONObject(h)?.optJSONArray("Metadata") ?: continue
+          for (i in 0 until hubMeta.length()) hubMeta.optJSONObject(i)?.let(metadataList::add)
+        }
+      }
+
+      val out = LinkedHashMap<String, ContinueWatchingItem>()
+      for (obj in metadataList) {
+        if (out.size >= limit) break
+        val id = obj.optString("ratingKey", "").trim()
+        if (id.isEmpty() || id in out) continue
+        val type = obj.optString("type", "")
+        val isEpisode = type.equals("episode", ignoreCase = true)
+        val title = if (isEpisode) obj.optString("grandparentTitle", "").ifBlank { obj.optString("title", "") } else obj.optString("title", "")
+        val epName = obj.optString("title", "")
+        val season = obj.optInt("parentIndex", 0)
+        val ep = obj.optInt("index", 0)
+        val epCode = if (isEpisode && season > 0 && ep > 0) "S$season · E$ep" else if (isEpisode) "Episode" else "Movie"
+        val duration = obj.optLong("duration", 0L)
+        val viewOffset = obj.optLong("viewOffset", 0L)
+        val pct = if (duration > 0L && viewOffset > 0L) (viewOffset.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f
+        val remMin = if (duration > viewOffset && duration > 0L) ((duration - viewOffset) / 60_000L).toInt().coerceAtLeast(1) else 0
+        val remLabel = when {
+          pct <= 0.01f -> "Next Up"
+          remMin >= 60 -> "${remMin / 60}h ${remMin % 60}m"
+          remMin > 0 -> "${remMin}m left"
+          else -> ""
+        }
+        val artPath = obj.optString("art", "").ifBlank {
+          obj.optString("grandparentArt", "").ifBlank { obj.optString("thumb", "") }
+        }
+        val imgUrl = if (artPath.isNotBlank()) {
+          "$baseUrl/photo/:/transcode?width=560&height=315&minSize=1&upscale=1&url=${URLEncoder.encode(artPath, "UTF-8")}&X-Plex-Token=${URLEncoder.encode(token, "UTF-8")}"
+        } else {
+          null
+        }
+        out[id] = ContinueWatchingItem(
+          itemId = id,
+          provider = MediaWallpaperProvider.PLEX,
+          title = title.ifBlank { "Untitled" },
+          subtitle = if (isEpisode) listOf(epCode, epName).filter { it.isNotBlank() }.joinToString(" — ") else "Resume",
+          badge = if (pct <= 0.01f) "Next Up" else epCode,
+          remainingLabel = remLabel,
+          progress = pct,
+          imageUrl = imgUrl,
+        )
+      }
+      out.values.toList()
+    }
+  }
+
+  private fun plexGetJson(urlString: String, token: String): String {
+    val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
+      requestMethod = "GET"
+      connectTimeout = 8_000
+      readTimeout = 10_000
+      setRequestProperty("Accept", "application/json")
+      setRequestProperty("X-Plex-Token", token)
+    }
+    try {
+      val code = conn.responseCode
+      val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+      val text = stream?.let { BufferedReader(InputStreamReader(it)).use { r -> r.readText() } }.orEmpty()
+      if (code !in 200..299) error("Plex HTTP $code")
+      return text
+    } finally {
+      conn.disconnect()
+    }
+  }
 
   override suspend fun authenticateAndFetch(
     rawServerUrl: String,

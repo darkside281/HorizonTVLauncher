@@ -33,6 +33,7 @@ import com.horizontv.launcher.model.AppRow
 import com.horizontv.launcher.model.ClockFontStyle
 import com.horizontv.launcher.model.ClockFontWeight
 import com.horizontv.launcher.model.ClockStyle
+import com.horizontv.launcher.model.ContinueWatchingItem
 import com.horizontv.launcher.model.ExternalSearchProvider
 import com.horizontv.launcher.model.HomeTileSize
 import com.horizontv.launcher.model.HomeTileSpacing
@@ -129,6 +130,9 @@ class LauncherViewModel(
     }
     if (_uiState.value.settings.weatherEnabled && _uiState.value.settings.isWeatherConfigured) {
       startWeatherRefreshLoop()
+    }
+    if (_uiState.value.settings.showContinueWatchingRow) {
+      refreshContinueWatching()
     }
     refreshScreensaverPhotoCount()
     if (appUpdateDataSource != null) {
@@ -1300,6 +1304,9 @@ class LauncherViewModel(
     if (_uiState.value.settings.weatherEnabled && _uiState.value.settings.isWeatherConfigured) {
       startWeatherRefreshLoop()
     }
+    if (_uiState.value.settings.showContinueWatchingRow) {
+      refreshContinueWatching()
+    }
   }
 
   fun setWeatherIconStyle(styleId: String) {
@@ -1937,6 +1944,80 @@ class LauncherViewModel(
 
   fun toggle24HourClock() {
     updateSettings { it.copy(use24HourClock = !it.use24HourClock) }
+  }
+
+  private var continueWatchingJob: Job? = null
+
+  fun toggleShowContinueWatchingRow() {
+    val next = !_uiState.value.settings.showContinueWatchingRow
+    updateSettings { it.copy(showContinueWatchingRow = next) }
+    if (next) {
+      refreshContinueWatching()
+    } else {
+      continueWatchingJob?.cancel()
+      _uiState.update { it.copy(continueWatchingItems = emptyList()) }
+    }
+  }
+
+  fun refreshContinueWatching() {
+    val s = _uiState.value.settings
+    if (!s.showContinueWatchingRow) return
+    val provider = when {
+      s.activeWallpaperProvider in setOf(MediaWallpaperProvider.JELLYFIN, MediaWallpaperProvider.PLEX, MediaWallpaperProvider.EMBY) &&
+        s.isProviderConfigured(s.activeWallpaperProvider) -> s.activeWallpaperProvider
+      s.isJellyfinConfigured -> MediaWallpaperProvider.JELLYFIN
+      s.isPlexConfigured -> MediaWallpaperProvider.PLEX
+      s.isEmbyConfigured -> MediaWallpaperProvider.EMBY
+      else -> null
+    }
+    if (provider == null) {
+      _uiState.update { it.copy(continueWatchingItems = emptyList()) }
+      return
+    }
+    val serverUrl = s.serverUrlFor(provider)
+    val token = s.tokenFor(provider)
+    val userId = s.userIdFor(provider)
+    val client = dataSourceFor(provider)
+    continueWatchingJob?.cancel()
+    continueWatchingJob = viewModelScope.launch {
+      val items = client.fetchContinueWatching(
+        serverUrl = serverUrl,
+        token = token,
+        userId = userId,
+        provider = provider,
+        limit = 12,
+      ).getOrDefault(emptyList())
+      _uiState.update { it.copy(continueWatchingItems = items) }
+      // Load 16:9 thumbnails concurrently
+      val hydrated = items.map { item ->
+        async {
+          val bmp = item.imageUrl?.let { client.downloadThumbnail(it, token) }
+          item.copy(thumbnail = bmp)
+        }
+      }.map { it.await() }
+      _uiState.update { it.copy(continueWatchingItems = hydrated) }
+    }
+  }
+
+  fun openContinueWatchingItem(item: ContinueWatchingItem) {
+    when (item.provider) {
+      MediaWallpaperProvider.JELLYFIN -> {
+        val launched = appDataSource.openJellyfinItem(
+          serverUrl = _uiState.value.settings.jellyfinServerUrl,
+          itemId = item.itemId,
+        )
+        if (!launched) showStatus("Jellyfin TV app is not installed")
+      }
+      MediaWallpaperProvider.PLEX -> {
+        val plex = _uiState.value.allApps.firstOrNull { it.packageName.contains("plex", ignoreCase = true) }
+        if (plex != null) appDataSource.launchApp(plex) else showStatus("Plex app is not installed")
+      }
+      MediaWallpaperProvider.EMBY -> {
+        val emby = _uiState.value.allApps.firstOrNull { it.packageName.contains("emby", ignoreCase = true) }
+        if (emby != null) appDataSource.launchApp(emby) else showStatus("Emby app is not installed")
+      }
+      else -> Unit
+    }
   }
 
   fun toggleShowClock() {

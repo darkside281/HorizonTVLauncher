@@ -3,10 +3,12 @@ package com.horizontv.launcher.data
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.horizontv.launcher.model.ContinueWatchingItem
 import com.horizontv.launcher.model.JellyfinBackdrop
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JellyfinSearchItem
+import com.horizontv.launcher.model.MediaWallpaperProvider
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -74,9 +76,125 @@ interface JellyfinDataSource {
     imageUrl: String,
     token: String,
   ): ImageBitmap?
+
+  suspend fun fetchContinueWatching(
+    serverUrl: String,
+    token: String,
+    userId: String,
+    provider: MediaWallpaperProvider = MediaWallpaperProvider.JELLYFIN,
+    limit: Int = 12,
+  ): Result<List<ContinueWatchingItem>> = Result.success(emptyList())
 }
 
 class JellyfinClient : JellyfinDataSource {
+
+  override suspend fun fetchContinueWatching(
+    serverUrl: String,
+    token: String,
+    userId: String,
+    provider: MediaWallpaperProvider,
+    limit: Int,
+  ): Result<List<ContinueWatchingItem>> = withContext(Dispatchers.IO) {
+    runCatching {
+      val baseUrl = normalizeUrl(serverUrl)
+      if (baseUrl.isEmpty() || token.isBlank()) return@runCatching emptyList()
+      val resolvedUserId = userId.ifBlank { fetchFirstUserId(baseUrl, token).orEmpty() }
+      if (resolvedUserId.isBlank()) return@runCatching emptyList()
+
+      val seen = LinkedHashMap<String, ContinueWatchingItem>()
+      val resumeUrl = "$baseUrl/Users/$resolvedUserId/Items/Resume?Limit=$limit&Recursive=true&MediaTypes=Video&EnableImageTypes=Backdrop,Thumb,Primary"
+      val nextUpUrl = "$baseUrl/Shows/NextUp?UserId=$resolvedUserId&Limit=$limit&EnableImageTypes=Backdrop,Thumb,Primary"
+
+      fun parseItems(raw: String?, isNextUp: Boolean) {
+        if (raw.isNullOrBlank()) return
+        val items = runCatching { JSONObject(raw).optJSONArray("Items") }.getOrNull() ?: return
+        for (i in 0 until items.length()) {
+          if (seen.size >= limit) break
+          val obj = items.optJSONObject(i) ?: continue
+          val id = obj.optString("Id", "").trim()
+          if (id.isEmpty() || id in seen) continue
+          val type = obj.optString("Type", "")
+          val isEpisode = type.equals("Episode", ignoreCase = true)
+          val name = obj.optString("Name", "").trim()
+          val seriesName = obj.optString("SeriesName", "").trim()
+          val seasonNum = obj.optInt("ParentIndexNumber", 0)
+          val epNum = obj.optInt("IndexNumber", 0)
+          val epCode = if (isEpisode && seasonNum > 0 && epNum > 0) "S$seasonNum · E$epNum" else if (isEpisode) "Episode" else "Movie"
+
+          val userData = obj.optJSONObject("UserData")
+          val runtimeTicks = obj.optLong("RunTimeTicks", 0L)
+          val posTicks = userData?.optLong("PlaybackPositionTicks", 0L) ?: 0L
+          val pct = when {
+            userData != null && userData.has("PlayedPercentage") ->
+              (userData.optDouble("PlayedPercentage", 0.0) / 100.0).toFloat()
+            runtimeTicks > 0L && posTicks > 0L -> (posTicks.toFloat() / runtimeTicks.toFloat())
+            else -> 0f
+          }.coerceIn(0f, 1f)
+
+          val remMinutes = if (runtimeTicks > posTicks && runtimeTicks > 0L) {
+            ((runtimeTicks - posTicks) / 600_000_000L).toInt().coerceAtLeast(1)
+          } else {
+            0
+          }
+          val remLabel = when {
+            isNextUp && pct <= 0.01f -> "Next Up"
+            remMinutes >= 60 -> "${remMinutes / 60}h ${remMinutes % 60}m"
+            remMinutes > 0 -> "${remMinutes}m left"
+            else -> ""
+          }
+
+          val imageUrl = buildString {
+            val seriesId = obj.optString("SeriesId", "").trim()
+            val hasBackdrop = (obj.optJSONArray("BackdropImageTags")?.length() ?: 0) > 0
+            val parentBackdropId = obj.optString("ParentBackdropItemId", "").trim()
+            when {
+              hasBackdrop -> append("$baseUrl/Items/$id/Images/Backdrop/0?fillWidth=560&quality=82")
+              obj.optJSONObject("ImageTags")?.has("Thumb") == true ->
+                append("$baseUrl/Items/$id/Images/Thumb?fillWidth=560&quality=82")
+              parentBackdropId.isNotEmpty() ->
+                append("$baseUrl/Items/$parentBackdropId/Images/Backdrop/0?fillWidth=560&quality=82")
+              seriesId.isNotEmpty() ->
+                append("$baseUrl/Items/$seriesId/Images/Backdrop/0?fillWidth=560&quality=82")
+              else ->
+                append("$baseUrl/Items/$id/Images/Primary?fillWidth=560&quality=82")
+            }
+          }
+
+          val title = if (isEpisode && seriesName.isNotEmpty()) seriesName else name
+          val subtitle = if (isEpisode) {
+            listOf(epCode, name).filter { it.isNotBlank() }.joinToString(" — ")
+          } else {
+            val yr = obj.optInt("ProductionYear", 0)
+            if (yr > 0) "$yr • Resume" else "Resume"
+          }
+
+          seen[id] = ContinueWatchingItem(
+            itemId = id,
+            provider = provider,
+            title = title.ifBlank { "Untitled" },
+            subtitle = subtitle,
+            badge = if (isNextUp && pct <= 0.01f) "Next Up" else epCode,
+            remainingLabel = remLabel,
+            progress = pct,
+            imageUrl = imageUrl,
+          )
+        }
+      }
+
+      fun fetchJson(url: String): String? = runCatching {
+        val conn = openConnection(url, token)
+        try {
+          if (conn.responseCode in 200..299) readResponseText(conn) else null
+        } finally {
+          conn.disconnect()
+        }
+      }.getOrNull()
+
+      parseItems(fetchJson(resumeUrl), isNextUp = false)
+      parseItems(fetchJson(nextUpUrl), isNextUp = true)
+      seen.values.toList()
+    }
+  }
 
   override suspend fun authenticateAndFetch(
     rawServerUrl: String,

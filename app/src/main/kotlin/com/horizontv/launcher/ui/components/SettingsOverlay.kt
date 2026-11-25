@@ -196,6 +196,7 @@ fun SettingsOverlay(
   onToggleJustWatchShowRottenTomatoes: () -> Unit = {},
   onToggleJustWatchShowAgeRating: () -> Unit = {},
   onToggleShowAllAppsSection: () -> Unit,
+  onToggleShowContinueWatchingRow: () -> Unit = {},
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTileTitles: () -> Unit,
   onToggleShowTvInputsButton: () -> Unit = {},
@@ -535,6 +536,7 @@ fun SettingsOverlay(
                     onToggle24HourClock = onToggle24HourClock,
                     onToggleShowDate = onToggleShowDate,
                     onToggleShowAllAppsSection = onToggleShowAllAppsSection,
+                    onToggleShowContinueWatchingRow = onToggleShowContinueWatchingRow,
                     onSetGridColumns = onSetGridColumns,
                   )
                 }
@@ -773,6 +775,7 @@ private fun SettingsHomePane(
   onToggle24HourClock: () -> Unit,
   onToggleShowDate: () -> Unit,
   onToggleShowAllAppsSection: () -> Unit,
+  onToggleShowContinueWatchingRow: () -> Unit = {},
   onSetGridColumns: (Int) -> Unit,
 ) {
   val homeTabs = listOf(
@@ -808,6 +811,20 @@ private fun SettingsHomePane(
 
   when (activeHomeSection) {
     0 -> {
+      SettingsToggleRow(
+        title = "Show Continue Watching Row",
+        subtitle = when {
+          settings.isJellyfinConfigured -> "Pull in-progress movies & next episodes from Jellyfin"
+          settings.isPlexConfigured -> "Pull in-progress movies & next episodes from Plex"
+          settings.isEmbyConfigured -> "Pull in-progress movies & next episodes from Emby"
+          else -> "Connect Jellyfin, Plex, or Emby under Wallpapers to populate this row"
+        },
+        checked = settings.showContinueWatchingRow,
+        accent = accent,
+        onClick = onToggleShowContinueWatchingRow,
+        modifier = Modifier.focusProperties { left = activeTabRequester },
+      )
+
       SettingsToggleRow(
         title = "Lock Home Layout",
         subtitle = if (settings.lockHomeLayout) {

@@ -412,6 +412,8 @@ class MainActivity : ComponentActivity() {
           onToggleJustWatchShowRottenTomatoes = cb.onToggleJustWatchShowRottenTomatoes,
           onToggleJustWatchShowAgeRating = cb.onToggleJustWatchShowAgeRating,
           onToggleShowAllAppsSection = cb.onToggleShowAllAppsSection,
+          onToggleShowContinueWatchingRow = cb.onToggleShowContinueWatchingRow,
+          onOpenContinueWatchingItem = cb.onOpenContinueWatchingItem,
           onToggleShowAddAppTile = cb.onToggleShowAddAppTile,
           onToggleShowTileTitles = cb.onToggleShowTileTitles,
           onToggleShowTvInputsButton = cb.onToggleShowTvInputsButton,
@@ -622,6 +624,8 @@ class MainActivity : ComponentActivity() {
     val onToggleJustWatchShowRottenTomatoes = vm::toggleJustWatchShowRottenTomatoes
     val onToggleJustWatchShowAgeRating = vm::toggleJustWatchShowAgeRating
     val onToggleShowAllAppsSection = vm::toggleShowAllAppsSection
+    val onToggleShowContinueWatchingRow = vm::toggleShowContinueWatchingRow
+    val onOpenContinueWatchingItem = vm::openContinueWatchingItem
     val onToggleShowAddAppTile = vm::toggleShowAddAppTile
     val onToggleShowTileTitles = vm::toggleShowTileTitles
     val onToggleShowTvInputsButton = vm::toggleShowTvInputsButton
