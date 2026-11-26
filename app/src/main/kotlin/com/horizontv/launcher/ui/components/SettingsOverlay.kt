@@ -663,7 +663,6 @@ fun SettingsOverlay(
                 title = "Phone / PC Web Companion",
                 subtitle = "Scan QR to drag-reorder, paste keys & upload photos",
                 accent = accent,
-                highlighted = true,
                 onClick = onStartWebCompanion,
               )
 

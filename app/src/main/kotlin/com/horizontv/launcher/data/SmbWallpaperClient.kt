@@ -14,9 +14,17 @@ import com.horizontv.launcher.model.JellyfinBackdrop
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JellyfinSearchItem
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.Socket
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
@@ -32,6 +40,11 @@ import kotlinx.coroutines.withContext
  *
  * Credentials are passed via `token` as `"username\npassword"` (or blank for Guest/Anonymous).
  */
+data class DiscoveredSmbServer(
+  val ip: String,
+  val hostName: String? = null,
+)
+
 class SmbWallpaperClient : JellyfinDataSource {
 
   private data class SmbTarget(
@@ -294,5 +307,70 @@ class SmbWallpaperClient : JellyfinDataSource {
 
     fun encodeCredentials(username: String, password: String): String =
       if (username.isBlank() && password.isBlank()) "" else "${username.trim()}\n$password"
+
+    /**
+     * Scans the local /24 LAN subnet(s) in parallel for devices listening on TCP port 445 (SMB2/SMB3).
+     * Requires zero extra Android permissions beyond INTERNET and finishes in ~1.5 seconds.
+     */
+    suspend fun scanLanSmbServers(timeoutMs: Int = 260): List<DiscoveredSmbServer> = withContext(Dispatchers.IO) {
+      val localPrefixes = LinkedHashSet<String>()
+      val selfIps = HashSet<String>()
+      runCatching {
+        val ifaces = NetworkInterface.getNetworkInterfaces()
+        while (ifaces != null && ifaces.hasMoreElements()) {
+          val iface = ifaces.nextElement()
+          if (!iface.isUp || iface.isLoopback) continue
+          val addrs = iface.inetAddresses
+          while (addrs.hasMoreElements()) {
+            val addr = addrs.nextElement()
+            if (addr is Inet4Address && !addr.isLoopbackAddress && addr.isSiteLocalAddress) {
+              val ip = addr.hostAddress ?: continue
+              selfIps.add(ip)
+              val parts = ip.split('.')
+              if (parts.size == 4) {
+                localPrefixes.add("${parts[0]}.${parts[1]}.${parts[2]}")
+              }
+            }
+          }
+        }
+      }
+      if (localPrefixes.isEmpty()) return@withContext emptyList()
+
+      val candidateIps = localPrefixes.flatMap { prefix ->
+        (1..254).mapNotNull { host ->
+          val ip = "$prefix.$host"
+          if (ip in selfIps) null else ip
+        }
+      }
+
+      val chunkSize = ((candidateIps.size + 31) / 32).coerceAtLeast(1)
+      val foundIps = coroutineScope {
+        candidateIps.chunked(chunkSize).map { chunk ->
+          async(Dispatchers.IO) {
+            chunk.mapNotNull { ip ->
+              val open = runCatching {
+                Socket().use { sock ->
+                  sock.connect(InetSocketAddress(ip, 445), timeoutMs)
+                  true
+                }
+              }.getOrDefault(false)
+              if (open) ip else null
+            }
+          }
+        }.awaitAll().flatten()
+      }
+
+      coroutineScope {
+        foundIps.distinct().map { ip ->
+          async(Dispatchers.IO) {
+            val host = runCatching {
+              val name = InetAddress.getByName(ip).hostName?.trim().orEmpty()
+              if (name.isNotBlank() && name != ip) name.removeSuffix(".local") else null
+            }.getOrNull()
+            DiscoveredSmbServer(ip = ip, hostName = host)
+          }
+        }.awaitAll()
+      }.sortedBy { it.ip.substringAfterLast('.').toIntOrNull() ?: 999 }
+    }
   }
 }

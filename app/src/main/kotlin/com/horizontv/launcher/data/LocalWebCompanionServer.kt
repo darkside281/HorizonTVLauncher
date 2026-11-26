@@ -459,6 +459,18 @@ class LocalWebCompanionServer(
           writeJson(output, 200, JSONObject().put("ok", true))
         }
 
+        method == "GET" && path == "/api/smb/scan" -> {
+          val found = kotlinx.coroutines.runBlocking { SmbWallpaperClient.scanLanSmbServers() }
+          val arr = JSONArray()
+          found.forEach { srv ->
+            arr.put(JSONObject().apply {
+              put("ip", srv.ip)
+              put("hostName", srv.hostName ?: "")
+            })
+          }
+          writeJson(output, 200, JSONObject().put("servers", arr))
+        }
+
         method == "POST" && path == "/api/upload-icon" -> {
           val pkg = queryParams["pkg"].orEmpty().trim()
           val ok = pkg.isNotEmpty() && bodyBytes.isNotEmpty() && bridge.saveUploadedAppIcon(pkg, bodyBytes)
@@ -852,12 +864,15 @@ class LocalWebCompanionServer(
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Horizon TV Companion</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 108 108'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='108' y2='108' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0%25' stop-color='%231E1B4B'/%3E%3Cstop offset='52%25' stop-color='%230F172A'/%3E%3Cstop offset='100%25' stop-color='%23042F2E'/%3E%3C/linearGradient%3E%3ClinearGradient id='r' x1='14' y1='66' x2='94' y2='35' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0%25' stop-color='%232DD4BF'/%3E%3Cstop offset='50%25' stop-color='%2338BDF8'/%3E%3Cstop offset='100%25' stop-color='%23A855F7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='108' height='108' rx='24' fill='url(%23s)'/%3E%3Cpath d='M14,66 Q38,24 58,46 T94,35' fill='none' stroke='url(%23r)' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M0,84 L34,55 L56,72 L78,50 L108,78 L108,108 L0,108 Z' fill='%23090D1C'/%3E%3C/svg%3E" />
 <style>
   :root { --bg:#060b16; --card:#10192b; --border:rgba(255,255,255,.12); --accent:#38bdf8; --text:#f8fafc; --muted:#94a3b8; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:radial-gradient(circle at 15% 10%, rgba(14,165,233,.22), transparent 50%), var(--bg); color:var(--text); min-height:100vh; padding:18px; }
   .wrap { max-width:960px; margin:0 auto; }
   .top { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .brand-logo { width:44px; height:44px; flex-shrink:0; display:block; filter:drop-shadow(0 4px 10px rgba(0,0,0,.35)); }
   h1 { margin:0; font-size:22px; }
   .sub { color:var(--muted); font-size:13px; margin-top:2px; }
   .badge { background:rgba(16,185,129,.16); border:1px solid rgba(16,185,129,.5); color:#6ee7b7; padding:6px 12px; border-radius:999px; font-size:12px; font-weight:700; }
@@ -896,9 +911,42 @@ class LocalWebCompanionServer(
 <body>
 <div class="wrap">
   <div class="top">
-    <div>
-      <h1>Horizon TV Companion</h1>
-      <div class="sub">Complete live TV remote editor • Every setting saves immediately</div>
+    <div class="brand">
+      <svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" aria-hidden="true">
+        <defs>
+          <clipPath id="hRounded"><rect x="0" y="0" width="108" height="108" rx="24" ry="24" /></clipPath>
+          <linearGradient id="hSky" x1="0" y1="0" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#1E1B4B" /><stop offset="52%" stop-color="#0F172A" /><stop offset="100%" stop-color="#042F2E" />
+          </linearGradient>
+          <radialGradient id="hGlow" cx="54" cy="48" r="44" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.25" /><stop offset="60%" stop-color="#2DD4BF" stop-opacity="0.10" /><stop offset="100%" stop-color="#0F172A" stop-opacity="0" />
+          </radialGradient>
+          <linearGradient id="hRib1" x1="18" y1="72" x2="92" y2="46" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#2DD4BF" /><stop offset="50%" stop-color="#38BDF8" /><stop offset="100%" stop-color="#A855F7" />
+          </linearGradient>
+          <linearGradient id="hRib2" x1="14" y1="66" x2="94" y2="35" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#2DD4BF" /><stop offset="50%" stop-color="#38BDF8" /><stop offset="100%" stop-color="#A855F7" />
+          </linearGradient>
+          <linearGradient id="hRim" x1="24" y1="78" x2="84" y2="78" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#2DD4BF" stop-opacity="0" /><stop offset="50%" stop-color="#5EEAD4" stop-opacity="1" /><stop offset="100%" stop-color="#A855F7" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <g clip-path="url(#hRounded)">
+          <rect x="0" y="0" width="108" height="108" fill="url(#hSky)" />
+          <ellipse cx="54" cy="48" rx="44" ry="32" fill="url(#hGlow)" />
+          <path d="M18,72 Q42,38 62,56 T92,46" fill="none" stroke="url(#hRib1)" stroke-width="3.2" stroke-opacity="0.48" stroke-linecap="round" />
+          <path d="M14,66 Q38,24 58,46 T94,35" fill="none" stroke="url(#hRib2)" stroke-width="6.8" stroke-opacity="0.95" stroke-linecap="round" />
+          <path d="M0,84 L34,55 L56,72 L78,50 L108,78 L108,108 L0,108 Z" fill="#090D1C" />
+          <path d="M34,55 L46,64 L28,77 Z" fill="#1E293B" fill-opacity="0.72" />
+          <path d="M78,50 L89,61 L71,73 Z" fill="#1E293B" fill-opacity="0.72" />
+          <path d="M24,78 L84,78" fill="none" stroke="url(#hRim)" stroke-width="1.6" stroke-opacity="0.55" stroke-linecap="round" />
+        </g>
+        <rect x="0.75" y="0.75" width="106.5" height="106.5" rx="23.25" ry="23.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="1.5" />
+      </svg>
+      <div>
+        <h1>Horizon TV Companion</h1>
+        <div class="sub">Complete live TV remote editor • Every setting saves immediately</div>
+      </div>
     </div>
     <div id="statusBadge" class="badge">Connecting…</div>
   </div>
@@ -1129,6 +1177,31 @@ class LocalWebCompanionServer(
           <input id="albumFiles" type="file" accept="image/*" multiple />
           <button class="btn" onclick="uploadAlbumPhotos()">Upload Photos &amp; Start Slideshow</button>
           <button id="clearAlbumBtn" class="btn danger hidden" onclick="clearAlbumPhotos()">Clear Album</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>SMB Network Share (NAS / Windows / Samba)</h2>
+        <div class="sub">Stream wallpapers directly from a shared folder on your local network.</div>
+        <div class="row" style="margin-top:10px;">
+          <button id="smbScanBtn" class="btn sec sm" onclick="scanSmbServers()">🔍 Scan Network for SMB Servers</button>
+          <span id="smbScanStatus" class="sub"></span>
+        </div>
+        <div id="smbDiscoveredList" class="row" style="margin-top:8px;"></div>
+        <label>SMB Share Path</label>
+        <input id="wpSmbUrl" type="text" placeholder="smb://192.168.0.50/Wallpapers" />
+        <div class="grid2">
+          <div>
+            <label>Username (Optional)</label>
+            <input id="wpSmbUser" type="text" placeholder="Leave blank for Guest" />
+          </div>
+          <div>
+            <label>Password (Optional)</label>
+            <input id="wpSmbPass" type="password" placeholder="Leave blank for Guest" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <button class="btn" onclick="saveWpSmbShare()">Connect SMB &amp; Start Slideshow</button>
         </div>
       </div>
 
@@ -1523,6 +1596,9 @@ function renderState() {
   document.getElementById('wpRedditSort').value = STATE.redditSort || 'top_month';
   document.getElementById('clearWpBtn').classList.toggle('hidden', !STATE.hasCustomWallpaper);
   const albumCount = STATE.localAlbumCount || 0;
+  document.getElementById('wpSmbUrl').value = STATE.smbShareUrl || '';
+  document.getElementById('wpSmbUser').value = STATE.smbUsername || '';
+  document.getElementById('wpSmbPass').value = STATE.smbPassword || '';
   document.getElementById('albumCountBadge').textContent = albumCount + ' photo' + (albumCount === 1 ? '' : 's');
   document.getElementById('clearAlbumBtn').classList.toggle('hidden', albumCount === 0);
 
@@ -1604,6 +1680,50 @@ async function saveServer() {
   await api('/api/servers', { method:'POST', body:JSON.stringify({ provider, url, token }) });
   toast('Saved & applied to TV'); loadState();
 }
+async function scanSmbServers() {
+  const btn = document.getElementById('smbScanBtn');
+  const status = document.getElementById('smbScanStatus');
+  const list = document.getElementById('smbDiscoveredList');
+  btn.disabled = true;
+  status.textContent = 'Scanning local network (port 445)…';
+  list.innerHTML = '';
+  try {
+    const res = await api('/api/smb/scan');
+    const servers = res.servers || [];
+    if (!servers.length) {
+      status.textContent = 'No SMB servers found on this subnet.';
+    } else {
+      status.textContent = 'Found ' + servers.length + ' server' + (servers.length === 1 ? '' : 's') + ' — tap to fill:';
+      servers.forEach(srv => {
+        const chip = document.createElement('button');
+        chip.className = 'btn sec sm';
+        chip.textContent = srv.hostName ? (srv.hostName + ' (' + srv.ip + ')') : srv.ip;
+        chip.onclick = () => {
+          const path = 'smb://' + srv.ip + '/';
+          document.getElementById('wpSmbUrl').value = path;
+          document.getElementById('wpSmbUrl').focus();
+          toast('Selected ' + path + ' — add your share folder name');
+        };
+        list.appendChild(chip);
+      });
+    }
+  } catch (e) {
+    status.textContent = 'Scan failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function saveWpSmbShare() {
+  const url = document.getElementById('wpSmbUrl').value.trim();
+  if (!url) return toast('Enter an SMB share path like smb://192.168.0.50/Wallpapers');
+  const user = document.getElementById('wpSmbUser').value.trim();
+  const pass = document.getElementById('wpSmbPass').value;
+  await api('/api/servers', { method:'POST', body:JSON.stringify({ provider:'smb', serverUrl:url, token:user + '\n' + pass }) });
+  toast('SMB Share connected & slideshow started!');
+  loadState();
+}
+
 async function uploadAlbumPhotos() {
   const files = document.getElementById('albumFiles').files;
   if (!files || files.length === 0) return toast('Choose one or more photos first');

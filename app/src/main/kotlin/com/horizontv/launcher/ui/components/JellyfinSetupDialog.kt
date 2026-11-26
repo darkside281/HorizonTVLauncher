@@ -30,7 +30,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.horizontv.launcher.data.DiscoveredSmbServer
+import com.horizontv.launcher.data.SmbWallpaperClient
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -143,6 +147,66 @@ fun JellyfinSetupDialog(
           )
 
           if (provider.requiresServerUrl) {
+            if (isSmb) {
+              val scanScope = rememberCoroutineScope()
+              var isScanningSmb by remember { mutableStateOf(false) }
+              var discoveredServers by remember { mutableStateOf<List<DiscoveredSmbServer>>(emptyList()) }
+              var scanStatusNote by remember { mutableStateOf<String?>(null) }
+
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+              ) {
+                AuthModePill(
+                  label = if (isScanningSmb) "Scanning LAN…" else "Scan LAN for SMB Servers",
+                  selected = isScanningSmb,
+                  accent = accent,
+                  onClick = {
+                    if (!isScanningSmb) {
+                      isScanningSmb = true
+                      scanStatusNote = "Scanning local network (port 445)…"
+                      scanScope.launch {
+                        val found = SmbWallpaperClient.scanLanSmbServers()
+                        discoveredServers = found
+                        scanStatusNote = if (found.isEmpty()) {
+                          "No SMB servers found on this subnet"
+                        } else {
+                          "Found ${found.size} server${if (found.size == 1) "" else "s"} — select one below:"
+                        }
+                        isScanningSmb = false
+                      }
+                    }
+                  },
+                )
+                if (!scanStatusNote.isNullOrBlank()) {
+                  Text(
+                    text = scanStatusNote!!,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.68f),
+                    modifier = Modifier.weight(1f),
+                  )
+                }
+              }
+
+              if (discoveredServers.isNotEmpty()) {
+                Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                  discoveredServers.take(4).forEach { srv ->
+                    val label = if (!srv.hostName.isNullOrBlank()) "${srv.hostName} (${srv.ip})" else srv.ip
+                    AuthModePill(
+                      label = label,
+                      selected = serverUrl.contains(srv.ip),
+                      accent = accent,
+                      onClick = { serverUrl = "smb://${srv.ip}/" },
+                    )
+                  }
+                }
+              }
+            }
+
             OutlinedTextField(
               value = serverUrl,
               onValueChange = { serverUrl = it },

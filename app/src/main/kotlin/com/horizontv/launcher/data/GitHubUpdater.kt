@@ -74,7 +74,10 @@ class GitHubUpdater(
               val asset = assets.optJSONObject(i) ?: continue
               val name = asset.optString("name", "").trim()
               val dlUrl = asset.optString("browser_download_url", "").trim()
-              if (name.endsWith(".apk", ignoreCase = true) && dlUrl.isNotEmpty()) {
+              if (name.endsWith(".apk", ignoreCase = true) &&
+                !name.contains("full", ignoreCase = true) &&
+                dlUrl.isNotEmpty()
+              ) {
                 apkUrl = dlUrl
                 apkName = name
                 apkSize = asset.optLong("size", 0L)
