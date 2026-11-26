@@ -1065,6 +1065,28 @@ data class LauncherUiState(
   val pinPrompt: PinPromptState? = null,
   val statusMessage: String? = null,
 ) {
+  val hasAnyModalOpen: Boolean
+    get() = isSettingsOpen ||
+      isSearchVisible ||
+      menuTarget != null ||
+      isSetupWizardOpen ||
+      openFolderId != null ||
+      editingFolderAppsId != null ||
+      renamingFolderId != null ||
+      isCreatingFolder ||
+      webCompanionInfo != null ||
+      setupProviderDialog != null ||
+      isAddingSubreddit ||
+      isWeatherDialogOpen ||
+      isTvInputsDialogOpen ||
+      showUpdateDialog ||
+      pinPrompt != null ||
+      renamingApp != null ||
+      renamingRowId != null ||
+      isCreatingRow ||
+      addingAppsToRowId != null ||
+      orderingRowId != null
+
   private val decoratedApps: List<AppInfo>
     get() = allApps.map { app ->
       val customName = settings.customLabels[app.packageName]?.trim()

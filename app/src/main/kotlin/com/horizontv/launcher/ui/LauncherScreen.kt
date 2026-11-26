@@ -312,7 +312,7 @@ fun LauncherScreen(
   onDismissUpdateDialog: () -> Unit = {},
   onInstallUpdate: () -> Unit = {},
   homeFocusTrigger: Int = 0,
-  appVersionName: String = "2.1.0",
+  appVersionName: String = "2.5.57",
   appVersionCode: Int = 24,
 ) {
   val theme = remember(state.settings.themeId) { LauncherPalettes.themeById(state.settings.themeId) }
@@ -360,23 +360,21 @@ fun LauncherScreen(
   var isHeroEntryFocused by remember { mutableStateOf(false) }
   var lastInteractionMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-  // Idle timer for built-in Horizon Screensaver
+  // Idle timer for built-in Horizon Screensaver — pauses while any modal dialog is open
   LaunchedEffect(
     state.settings.screensaverEnabled,
     state.settings.screensaverTimeoutMinutes,
     state.isScreensaverActive,
-    state.isSettingsOpen,
-    state.isSearchVisible,
-    state.menuTarget,
+    state.hasAnyModalOpen,
   ) {
     if (!state.settings.screensaverEnabled ||
       state.isScreensaverActive ||
-      state.isSettingsOpen ||
-      state.isSearchVisible ||
-      state.menuTarget != null
+      state.hasAnyModalOpen
     ) {
+      lastInteractionMillis = System.currentTimeMillis()
       return@LaunchedEffect
     }
+    lastInteractionMillis = System.currentTimeMillis()
     val timeoutMs = state.settings.screensaverTimeoutMinutes.coerceIn(1, 60) * 60_000L
     while (true) {
       delay(5_000L)
@@ -764,8 +762,21 @@ fun LauncherScreen(
                 // Primary Row (Row 0)
                 val showCwRow = state.settings.showContinueWatchingRow && state.continueWatchingItems.isNotEmpty()
                 val cwEntryRequester = if (showCwRow) {
-                  val firstCwId = state.continueWatchingItems.first().itemId
-                  rowCardFocusRequesters.getOrPut("cw:$firstCwId") { FocusRequester() }
+                  val cwListState = rowListStates["__cw__"]
+                  val visibleCwIndices = cwListState?.layoutInfo?.visibleItemsInfo?.map { it.index }.orEmpty()
+                  val lastCwId = lastFocusedPackageByRow["__cw__"]
+                  val targetCwId = when {
+                    lastCwId != null && visibleCwIndices.any { idx ->
+                      state.continueWatchingItems.getOrNull(idx)?.itemId == lastCwId
+                    } -> lastCwId
+                    visibleCwIndices.isNotEmpty() -> {
+                      val firstVisibleIdx = visibleCwIndices.first()
+                      state.continueWatchingItems.getOrNull(firstVisibleIdx)?.itemId
+                        ?: state.continueWatchingItems.first().itemId
+                    }
+                    else -> state.continueWatchingItems.first().itemId
+                  }
+                  rowCardFocusRequesters.getOrPut("cw:$targetCwId") { FocusRequester() }
                 } else {
                   null
                 }
@@ -809,7 +820,7 @@ fun LauncherScreen(
                     },
                     onLaunchApp = onLaunchApp,
                     onOpenFolder = onOpenFolder,
-                    onStartReorderFolder = { token -> onMoveAppInRow(heroRow.id, token, 0) },
+                    onStartReorderFolder = { token -> onStartReordering(heroRow.id, token) },
                     onOpenAppMenu = { app -> onOpenAppMenu(app, heroRow.id) },
                     onMoveApp = { pkg, delta -> onMoveAppInRow(heroRow.id, pkg, delta) },
                     onFinishReorder = onStopReordering,
@@ -851,7 +862,8 @@ fun LauncherScreen(
                       focusRequesterFor = { itemId ->
                         rowCardFocusRequesters.getOrPut("cw:$itemId") { FocusRequester() }
                       },
-                      onFocused = {
+                      onFocused = { cwItem ->
+                        lastFocusedPackageByRow["__cw__"] = cwItem.itemId
                         isHeroEntryFocused = false
                         requestDockScroll(rowYOffsets["__cw__"] ?: 0)
                       },
@@ -910,7 +922,7 @@ fun LauncherScreen(
                       },
                       onLaunchApp = onLaunchApp,
                       onOpenFolder = onOpenFolder,
-                      onStartReorderFolder = { token -> onMoveAppInRow(extraRow.id, token, 0) },
+                      onStartReorderFolder = { token -> onStartReordering(extraRow.id, token) },
                       onOpenAppMenu = { app -> onOpenAppMenu(app, extraRow.id) },
                       onMoveApp = { pkg, delta -> onMoveAppInRow(extraRow.id, pkg, delta) },
                       onFinishReorder = onStopReordering,

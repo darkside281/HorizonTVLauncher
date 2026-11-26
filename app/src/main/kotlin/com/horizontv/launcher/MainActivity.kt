@@ -42,8 +42,8 @@ class MainActivity : ComponentActivity() {
 
   private val viewModel: LauncherViewModel by viewModels {
     val installedVersion = runCatching {
-      packageManager.getPackageInfo(packageName, 0).versionName ?: "2.5.17"
-    }.getOrDefault("2.5.17")
+      packageManager.getPackageInfo(packageName, 0).versionName ?: "2.5.57"
+    }.getOrDefault("2.5.57")
     LauncherViewModel.Factory(
       appDataSource = AppRepository(applicationContext),
       settingsStore = LauncherPreferences(applicationContext),
@@ -709,8 +709,8 @@ class MainActivity : ComponentActivity() {
     val onDismissUpdateDialog = vm::dismissUpdateDialog
     val onInstallUpdate = vm::installAvailableUpdate
     val appVersionName: String = runCatching {
-      activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "2.5.36"
-    }.getOrDefault("2.5.36")
+      activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "2.5.57"
+    }.getOrDefault("2.5.57")
     val appVersionCode: Int = runCatching {
       val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode.toInt() else {

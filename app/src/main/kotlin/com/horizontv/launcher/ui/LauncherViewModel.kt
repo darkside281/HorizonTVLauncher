@@ -88,7 +88,7 @@ class LauncherViewModel(
   private val streamingSearchDataSource: StreamingSearchDataSource = JustWatchClient(),
   private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
   private val appUpdateDataSource: AppUpdateDataSource? = null,
-  private val currentVersionName: String = "2.5.17",
+  private val currentVersionName: String = "2.5.57",
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(
@@ -2277,7 +2277,6 @@ class LauncherViewModel(
         }
         if (json.has("themeId")) {
           selectTheme(json.optString("themeId"))
-          return
         }
         if (json.has("accentId")) {
           selectAccent(json.optString("accentId"))
@@ -2431,9 +2430,15 @@ class LauncherViewModel(
       override fun getAlbumPhotoCount(): Int = localFolderDataSource?.albumPhotoCount() ?: 0
       override fun clearLocalAlbum() {
         localFolderDataSource?.clearAlbum()
-        if (_uiState.value.settings.activeWallpaperProvider == MediaWallpaperProvider.LOCAL_FOLDER) {
+        val s = _uiState.value.settings
+        if (s.activeWallpaperProvider == MediaWallpaperProvider.LOCAL_FOLDER) {
           cachedBackdrops = emptyList()
-          startJellyfinSlideshow(fetchFreshList = true)
+          if (s.localWallpaperFolderUri.isNullOrBlank()) {
+            updateSettings { it.copy(jellyfinEnabled = false) }
+            stopJellyfinSlideshow()
+          } else {
+            startJellyfinSlideshow(fetchFreshList = true)
+          }
         }
       }
       override fun saveUploadedAppIcon(packageName: String, bytes: ByteArray): Boolean {
@@ -3038,7 +3043,7 @@ class LauncherViewModel(
     private val localFolderDataSource: LocalFolderWallpaperClient? = null,
     private val screensaverPhotoSource: ScreensaverPhotoSource? = null,
     private val appUpdateDataSource: AppUpdateDataSource? = null,
-    private val currentVersionName: String = "2.5.17",
+    private val currentVersionName: String = "2.5.57",
   ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
