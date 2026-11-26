@@ -1449,17 +1449,21 @@ function pickNearest(val, opts) {
 async function api(path, opts) {
   const sep = path.includes('?') ? '&' : '?';
   const res = await fetch(path + sep + 'code=' + encodeURIComponent(CODE), opts);
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 429) {
+    const errData = await res.json().catch(() => ({}));
+    const msg = errData.error || (res.status === 429 ? 'Too many failed attempts — locked for 30s' : 'Invalid session code');
     document.getElementById('authCard').classList.remove('hidden');
     document.getElementById('appBody').classList.add('hidden');
-    document.getElementById('statusBadge').textContent = 'Locked';
-    throw new Error('Unauthorized');
+    document.getElementById('statusBadge').textContent = res.status === 429 ? 'Locked (30s)' : 'Locked';
+    if (CODE) toast(msg);
+    throw new Error(msg);
   }
   return res;
 }
 async function loadState() {
   try {
     const res = await api('/api/state');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     STATE = await res.json();
     document.getElementById('authCard').classList.add('hidden');
     document.getElementById('appBody').classList.remove('hidden');
