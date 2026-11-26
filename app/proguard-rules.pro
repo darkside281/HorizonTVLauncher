@@ -2,12 +2,10 @@
 -keep class com.horizontv.launcher.MainActivity { *; }
 -keep class com.horizontv.launcher.HorizonDreamService { *; }
 
-# Keep SMBJ & BouncyCastle classes loaded via reflection for SMB2/SMB3/NTLM auth
--keep class com.hierynomus.smbj.** { *; }
--keep class com.hierynomus.security.bc.** { *; }
--keep class com.hierynomus.security.jce.** { *; }
--keep class com.hierynomus.ntlm.** { *; }
--keep class com.hierynomus.spnego.** { *; }
+# Keep SMBJ, MBassy event bus & BouncyCastle classes loaded via reflection for SMB2/SMB3/NTLM auth
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+-keep class com.hierynomus.** { *; }
+-keep class net.engio.mbassy.** { *; }
 -keep class org.bouncycastle.jce.provider.** { *; }
 -keep class org.bouncycastle.jcajce.provider.symmetric.AES** { *; }
 -keep class org.bouncycastle.jcajce.provider.digest.MD4** { *; }

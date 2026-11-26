@@ -471,6 +471,43 @@ class LocalWebCompanionServer(
           writeJson(output, 200, JSONObject().put("servers", arr))
         }
 
+        method == "POST" && path == "/api/smb/browse" -> {
+          val req = JSONObject(bodyBytes.toString(Charsets.UTF_8).ifBlank { "{}" })
+          val host = req.optString("host", "").trim()
+          val shareName = req.optString("shareName", "").trim()
+          val subPath = req.optString("subPath", "").trim()
+          val user = req.optString("username", "").trim()
+          val pass = req.optString("password", "")
+          val result = kotlinx.coroutines.runBlocking {
+            if (shareName.isBlank()) {
+              SmbWallpaperClient.listServerShares(host, user, pass)
+            } else {
+              SmbWallpaperClient.listShareFolders(host, shareName, subPath, user, pass)
+            }
+          }
+          result.fold(
+            onSuccess = { browse ->
+              val foldersArr = JSONArray()
+              browse.folders.forEach { foldersArr.put(it) }
+              writeJson(
+                output,
+                200,
+                JSONObject().apply {
+                  put("host", browse.host)
+                  put("shareName", browse.shareName ?: "")
+                  put("subPath", browse.subPath)
+                  put("currentPath", browse.currentPath)
+                  put("folders", foldersArr)
+                  put("imageCount", browse.imageCount)
+                },
+              )
+            },
+            onFailure = { err ->
+              writeJson(output, 400, JSONObject().put("error", err.message ?: "Could not browse SMB server"))
+            },
+          )
+        }
+
         method == "POST" && path == "/api/upload-icon" -> {
           val pkg = queryParams["pkg"].orEmpty().trim()
           val ok = pkg.isNotEmpty() && bodyBytes.isNotEmpty() && bridge.saveUploadedAppIcon(pkg, bodyBytes)
@@ -1182,17 +1219,29 @@ class LocalWebCompanionServer(
 
       <div class="card">
         <h2>SMB Network Share (NAS / Windows / Samba)</h2>
-        <div class="sub">Stream wallpapers directly from a shared folder on your local network.</div>
+        <div class="sub">Scan your LAN for SMB servers, browse shares &amp; folders, and pick where your photos live.</div>
         <div class="row" style="margin-top:10px;">
           <button id="smbScanBtn" class="btn sec sm" onclick="scanSmbServers()">🔍 Scan Network for SMB Servers</button>
+          <button id="smbBrowseBtn" class="btn sec sm" onclick="browseSmbFromInput()">📂 Browse Shares / Folders</button>
           <span id="smbScanStatus" class="sub"></span>
         </div>
         <div id="smbDiscoveredList" class="row" style="margin-top:8px;"></div>
+        <div id="smbBrowserBox" class="hidden" style="margin-top:10px;padding:12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--border);">
+          <div class="row" style="justify-content:space-between;">
+            <div class="row">
+              <button id="smbUpBtn" class="btn sec sm hidden" onclick="browseSmbUp()">⬅ Up</button>
+              <span id="smbBrowsePath" class="pill">smb://</span>
+              <span id="smbImgCountBadge" class="sub"></span>
+            </div>
+            <button id="smbUseFolderBtn" class="btn sm hidden" onclick="useCurrentSmbFolder()">✓ Use This Folder</button>
+          </div>
+          <div id="smbFolderList" class="row" style="margin-top:10px;"></div>
+        </div>
         <label>SMB Share Path</label>
         <input id="wpSmbUrl" type="text" placeholder="smb://192.168.0.50/Wallpapers" />
         <div class="grid2">
           <div>
-            <label>Username (Optional)</label>
+            <label>Username (Optional — enter before browsing private shares)</label>
             <input id="wpSmbUser" type="text" placeholder="Leave blank for Guest" />
           </div>
           <div>
@@ -1680,6 +1729,8 @@ async function saveServer() {
   await api('/api/servers', { method:'POST', body:JSON.stringify({ provider, url, token }) });
   toast('Saved & applied to TV'); loadState();
 }
+let SMB_BROWSE = { host:'', shareName:'', subPath:'' };
+
 async function scanSmbServers() {
   const btn = document.getElementById('smbScanBtn');
   const status = document.getElementById('smbScanStatus');
@@ -1693,16 +1744,14 @@ async function scanSmbServers() {
     if (!servers.length) {
       status.textContent = 'No SMB servers found on this subnet.';
     } else {
-      status.textContent = 'Found ' + servers.length + ' server' + (servers.length === 1 ? '' : 's') + ' — tap to fill:';
+      status.textContent = 'Found ' + servers.length + ' server' + (servers.length === 1 ? '' : 's') + ' — tap one to browse shares:';
       servers.forEach(srv => {
         const chip = document.createElement('button');
         chip.className = 'btn sec sm';
-        chip.textContent = srv.hostName ? (srv.hostName + ' (' + srv.ip + ')') : srv.ip;
+        chip.textContent = srv.hostName ? ('🖥 ' + srv.hostName + ' (' + srv.ip + ')') : ('🖥 ' + srv.ip);
         chip.onclick = () => {
-          const path = 'smb://' + srv.ip + '/';
-          document.getElementById('wpSmbUrl').value = path;
-          document.getElementById('wpSmbUrl').focus();
-          toast('Selected ' + path + ' — add your share folder name');
+          document.getElementById('wpSmbUrl').value = 'smb://' + srv.ip + '/';
+          browseSmb(srv.ip, '', '');
         };
         list.appendChild(chip);
       });
@@ -1712,6 +1761,88 @@ async function scanSmbServers() {
   } finally {
     btn.disabled = false;
   }
+}
+
+function browseSmbFromInput() {
+  const raw = document.getElementById('wpSmbUrl').value.trim().replace(/\\/g, '/').replace(/^smb:\/\//i, '').replace(/^\/+/, '');
+  const parts = raw.split('/').filter(Boolean);
+  if (!parts.length) return toast('Scan for a server or enter an IP first (e.g. smb://192.168.0.50/)');
+  browseSmb(parts[0], parts[1] || '', parts.slice(2).join('/'));
+}
+
+async function browseSmb(host, shareName, subPath) {
+  const box = document.getElementById('smbBrowserBox');
+  const pathEl = document.getElementById('smbBrowsePath');
+  const countEl = document.getElementById('smbImgCountBadge');
+  const listEl = document.getElementById('smbFolderList');
+  const upBtn = document.getElementById('smbUpBtn');
+  const useBtn = document.getElementById('smbUseFolderBtn');
+  box.classList.remove('hidden');
+  pathEl.textContent = 'Loading smb://' + host + (shareName ? '/' + shareName : '') + (subPath ? '/' + subPath : '') + '…';
+  countEl.textContent = '';
+  listEl.innerHTML = '';
+  try {
+    const res = await api('/api/smb/browse', {
+      method: 'POST',
+      body: JSON.stringify({
+        host,
+        shareName,
+        subPath,
+        username: document.getElementById('wpSmbUser').value.trim(),
+        password: document.getElementById('wpSmbPass').value
+      })
+    });
+    SMB_BROWSE = { host: res.host || host, shareName: res.shareName || '', subPath: res.subPath || '' };
+    pathEl.textContent = res.currentPath || ('smb://' + host + '/');
+    document.getElementById('wpSmbUrl').value = res.currentPath || ('smb://' + host + '/');
+    upBtn.classList.toggle('hidden', !SMB_BROWSE.shareName);
+    useBtn.classList.toggle('hidden', !SMB_BROWSE.shareName);
+    if (SMB_BROWSE.shareName) {
+      countEl.textContent = (res.imageCount || 0) + ' image' + ((res.imageCount || 0) === 1 ? '' : 's') + ' in this folder';
+    } else {
+      countEl.textContent = 'Select a shared folder';
+    }
+    const folders = res.folders || [];
+    if (!folders.length) {
+      const empty = document.createElement('span');
+      empty.className = 'sub';
+      empty.textContent = SMB_BROWSE.shareName ? 'No subfolders here.' : 'No public disk shares listed (try entering Username & Password above, then tap Browse).';
+      listEl.appendChild(empty);
+    } else {
+      folders.forEach(name => {
+        const btn = document.createElement('button');
+        btn.className = 'btn sec sm';
+        btn.textContent = '📁 ' + name;
+        btn.onclick = () => {
+          if (!SMB_BROWSE.shareName) {
+            browseSmb(SMB_BROWSE.host, name, '');
+          } else {
+            const nextSub = SMB_BROWSE.subPath ? (SMB_BROWSE.subPath + '/' + name) : name;
+            browseSmb(SMB_BROWSE.host, SMB_BROWSE.shareName, nextSub);
+          }
+        };
+        listEl.appendChild(btn);
+      });
+    }
+  } catch (e) {
+    pathEl.textContent = 'smb://' + host + '/';
+    countEl.textContent = 'Error: ' + e.message + ' (if private, enter Username & Password and tap Browse)';
+  }
+}
+
+function browseSmbUp() {
+  if (!SMB_BROWSE.shareName) return;
+  if (!SMB_BROWSE.subPath) {
+    browseSmb(SMB_BROWSE.host, '', '');
+  } else {
+    const parts = SMB_BROWSE.subPath.split('/').filter(Boolean);
+    parts.pop();
+    browseSmb(SMB_BROWSE.host, SMB_BROWSE.shareName, parts.join('/'));
+  }
+}
+
+function useCurrentSmbFolder() {
+  saveWpSmbShare();
 }
 
 async function saveWpSmbShare() {

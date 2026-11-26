@@ -27,12 +27,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import com.horizontv.launcher.data.DiscoveredSmbServer
+import com.horizontv.launcher.data.SmbBrowseResult
 import com.horizontv.launcher.data.SmbWallpaperClient
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -150,16 +156,46 @@ fun JellyfinSetupDialog(
             if (isSmb) {
               val scanScope = rememberCoroutineScope()
               var isScanningSmb by remember { mutableStateOf(false) }
+              var isBrowsingSmb by remember { mutableStateOf(false) }
               var discoveredServers by remember { mutableStateOf<List<DiscoveredSmbServer>>(emptyList()) }
+              var browseResult by remember { mutableStateOf<SmbBrowseResult?>(null) }
               var scanStatusNote by remember { mutableStateOf<String?>(null) }
+
+              fun triggerBrowse(host: String, share: String?, subPath: String) {
+                if (isBrowsingSmb) return
+                isBrowsingSmb = true
+                scanStatusNote = "Browsing smb://$host${if (!share.isNullOrBlank()) "/$share" else ""}${if (subPath.isNotBlank()) "/$subPath" else ""}…"
+                scanScope.launch {
+                  val res = if (share.isNullOrBlank()) {
+                    SmbWallpaperClient.listServerShares(host, username, password)
+                  } else {
+                    SmbWallpaperClient.listShareFolders(host, share, subPath, username, password)
+                  }
+                  res.fold(
+                    onSuccess = { b ->
+                      browseResult = b
+                      serverUrl = b.currentPath
+                      scanStatusNote = if (b.shareName == null) {
+                        if (b.folders.isEmpty()) "No public shares listed — enter credentials below & tap Browse" else "Select a share:"
+                      } else {
+                        "${b.imageCount} image${if (b.imageCount == 1) "" else "s"} here — select subfolder or tap Connect"
+                      }
+                    },
+                    onFailure = { err ->
+                      scanStatusNote = err.message ?: "Could not browse server (enter credentials below if private)"
+                    },
+                  )
+                  isBrowsingSmb = false
+                }
+              }
 
               Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
               ) {
                 AuthModePill(
-                  label = if (isScanningSmb) "Scanning LAN…" else "Scan LAN for SMB Servers",
+                  label = if (isScanningSmb) "Scanning LAN…" else "Scan LAN",
                   selected = isScanningSmb,
                   accent = accent,
                   onClick = {
@@ -172,10 +208,24 @@ fun JellyfinSetupDialog(
                         scanStatusNote = if (found.isEmpty()) {
                           "No SMB servers found on this subnet"
                         } else {
-                          "Found ${found.size} server${if (found.size == 1) "" else "s"} — select one below:"
+                          "Found ${found.size} server${if (found.size == 1) "" else "s"} — select one to browse shares:"
                         }
                         isScanningSmb = false
                       }
+                    }
+                  },
+                )
+                AuthModePill(
+                  label = if (isBrowsingSmb) "Browsing…" else "Browse Shares",
+                  selected = isBrowsingSmb,
+                  accent = accent,
+                  onClick = {
+                    val cleaned = serverUrl.trim().replace('\\', '/').removePrefix("smb://").removePrefix("SMB://").trimStart('/')
+                    val segs = cleaned.split('/').filter { it.isNotBlank() }
+                    if (segs.isNotEmpty()) {
+                      triggerBrowse(segs[0], segs.getOrNull(1), segs.drop(2).joinToString("/"))
+                    } else {
+                      scanStatusNote = "Scan LAN or enter an SMB server IP first"
                     }
                   },
                 )
@@ -183,7 +233,7 @@ fun JellyfinSetupDialog(
                   Text(
                     text = scanStatusNote!!,
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.68f),
+                    color = Color.White.copy(alpha = 0.72f),
                     modifier = Modifier.weight(1f),
                   )
                 }
@@ -200,22 +250,94 @@ fun JellyfinSetupDialog(
                       label = label,
                       selected = serverUrl.contains(srv.ip),
                       accent = accent,
-                      onClick = { serverUrl = "smb://${srv.ip}/" },
+                      onClick = {
+                        serverUrl = "smb://${srv.ip}/"
+                        triggerBrowse(srv.ip, null, "")
+                      },
                     )
+                  }
+                }
+              }
+
+              val currentBrowse = browseResult
+              if (currentBrowse != null) {
+                Surface(
+                  shape = RoundedCornerShape(12.dp),
+                  color = Color.White.copy(alpha = 0.05f),
+                  border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Column(
+                    modifier = Modifier.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                  ) {
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      if (!currentBrowse.shareName.isNullOrBlank()) {
+                        AuthModePill(
+                          label = "⬅ Up",
+                          selected = false,
+                          accent = accent,
+                          onClick = {
+                            if (currentBrowse.subPath.isBlank()) {
+                              triggerBrowse(currentBrowse.host, null, "")
+                            } else {
+                              val parts = currentBrowse.subPath.split('/').filter { it.isNotBlank() }.dropLast(1)
+                              triggerBrowse(currentBrowse.host, currentBrowse.shareName, parts.joinToString("/"))
+                            }
+                          },
+                        )
+                      }
+                      Text(
+                        text = currentBrowse.currentPath,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = accent.primary,
+                        modifier = Modifier.weight(1f),
+                      )
+                    }
+                    if (currentBrowse.folders.isNotEmpty()) {
+                      currentBrowse.folders.chunked(3).take(4).forEach { rowItems ->
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                          rowItems.forEach { folder ->
+                            AuthModePill(
+                              label = "📁 $folder",
+                              selected = false,
+                              accent = accent,
+                              onClick = {
+                                if (currentBrowse.shareName.isNullOrBlank()) {
+                                  triggerBrowse(currentBrowse.host, folder, "")
+                                } else {
+                                  val next = if (currentBrowse.subPath.isBlank()) folder else "${currentBrowse.subPath}/$folder"
+                                  triggerBrowse(currentBrowse.host, currentBrowse.shareName, next)
+                                }
+                              },
+                              modifier = Modifier.weight(1f),
+                            )
+                          }
+                          repeat(3 - rowItems.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
             }
 
-            OutlinedTextField(
+            TvClickToEditField(
+              label = "${provider.label} Server URL",
               value = serverUrl,
+              placeholder = provider.defaultPortHint,
+              accent = accent,
+              fieldColors = fieldColors,
               onValueChange = { serverUrl = it },
-              modifier = Modifier.fillMaxWidth(),
-              singleLine = true,
-              label = { Text("${provider.label} Server URL") },
-              placeholder = { Text(provider.defaultPortHint, color = Color.White.copy(alpha = 0.42f)) },
-              shape = RoundedCornerShape(14.dp),
-              colors = fieldColors,
             )
 
             // Auth mode switch: Token/API Key vs Username + Password (hidden for SMB)
@@ -243,44 +365,35 @@ fun JellyfinSetupDialog(
           }
 
           if (useApiKey || !provider.requiresServerUrl) {
-            OutlinedTextField(
+            TvClickToEditField(
+              label = provider.tokenLabel,
               value = apiKey,
-              onValueChange = { apiKey = it },
-              modifier = Modifier.fillMaxWidth(),
-              singleLine = true,
-              label = { Text(provider.tokenLabel) },
-              placeholder = {
-                Text(
-                  text = when (provider) {
-                    MediaWallpaperProvider.PLEX -> "Your X-Plex-Token value"
-                    MediaWallpaperProvider.TMDB -> "Free key from themoviedb.org/settings/api"
-                    else -> "Dashboard → API Keys → +"
-                  },
-                  color = Color.White.copy(alpha = 0.42f),
-                )
+              placeholder = when (provider) {
+                MediaWallpaperProvider.PLEX -> "Your X-Plex-Token value"
+                MediaWallpaperProvider.TMDB -> "Free key from themoviedb.org/settings/api"
+                else -> "Dashboard → API Keys → +"
               },
-              shape = RoundedCornerShape(14.dp),
-              colors = fieldColors,
+              accent = accent,
+              fieldColors = fieldColors,
+              onValueChange = { apiKey = it },
             )
           } else {
-            OutlinedTextField(
+            TvClickToEditField(
+              label = provider.usernameLabel,
               value = username,
+              placeholder = if (isSmb) "Leave blank for Guest" else "Username",
+              accent = accent,
+              fieldColors = fieldColors,
               onValueChange = { username = it },
-              modifier = Modifier.fillMaxWidth(),
-              singleLine = true,
-              label = { Text(provider.usernameLabel) },
-              shape = RoundedCornerShape(14.dp),
-              colors = fieldColors,
             )
-            OutlinedTextField(
+            TvClickToEditField(
+              label = "Password",
               value = password,
+              placeholder = if (isSmb) "Leave blank for Guest" else "Password",
+              accent = accent,
+              fieldColors = fieldColors,
+              isPassword = true,
               onValueChange = { password = it },
-              modifier = Modifier.fillMaxWidth(),
-              singleLine = true,
-              label = { Text("Password") },
-              visualTransformation = PasswordVisualTransformation(),
-              shape = RoundedCornerShape(14.dp),
-              colors = fieldColors,
             )
           }
 
@@ -343,6 +456,103 @@ fun JellyfinSetupDialog(
               modifier = Modifier.weight(0.9f),
             )
           }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+private fun TvClickToEditField(
+  label: String,
+  value: String,
+  placeholder: String,
+  accent: AccentPreset,
+  fieldColors: androidx.compose.material3.TextFieldColors,
+  onValueChange: (String) -> Unit,
+  isPassword: Boolean = false,
+) {
+  var isEditing by remember { mutableStateOf(false) }
+  var isCardFocused by remember { mutableStateOf(false) }
+  val editFocusRequester = remember { FocusRequester() }
+  val keyboard = LocalSoftwareKeyboardController.current
+
+  if (isEditing) {
+    LaunchedEffect(Unit) {
+      runCatching { editFocusRequester.requestFocus() }
+      keyboard?.show()
+    }
+    OutlinedTextField(
+      value = value,
+      onValueChange = onValueChange,
+      modifier = Modifier
+        .fillMaxWidth()
+        .focusRequester(editFocusRequester)
+        .onFocusChanged { state ->
+          if (!state.isFocused && isEditing) {
+            isEditing = false
+            keyboard?.hide()
+          }
+        },
+      singleLine = true,
+      label = { Text(label) },
+      placeholder = { Text(placeholder, color = Color.White.copy(alpha = 0.42f)) },
+      visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+      keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+      keyboardActions = KeyboardActions(
+        onDone = {
+          isEditing = false
+          keyboard?.hide()
+        },
+      ),
+      shape = RoundedCornerShape(14.dp),
+      colors = fieldColors,
+    )
+  } else {
+    val bg by animateColorAsState(
+      targetValue = if (isCardFocused) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.28f),
+      label = "tvFieldBg",
+    )
+    Surface(
+      modifier = Modifier
+        .fillMaxWidth()
+        .onFocusChanged { isCardFocused = it.isFocused }
+        .clickable { isEditing = true },
+      shape = RoundedCornerShape(14.dp),
+      color = bg,
+      border = if (isCardFocused) BorderStroke(2.dp, accent.primary) else BorderStroke(1.dp, Color.White.copy(alpha = 0.24f)),
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isCardFocused) accent.primary else Color.White.copy(alpha = 0.62f),
+          )
+          val displayText = when {
+            value.isBlank() -> placeholder
+            isPassword -> "•".repeat(value.length.coerceAtMost(16))
+            else -> value
+          }
+          Text(
+            text = displayText,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (value.isBlank()) Color.White.copy(alpha = 0.42f) else Color.White,
+            maxLines = 1,
+          )
+        }
+        if (isCardFocused) {
+          Text(
+            text = "OK to edit",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = accent.primary,
+          )
         }
       }
     }

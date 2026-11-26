@@ -4,21 +4,27 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.hierynomus.msdtyp.AccessMask
+import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.mssmb2.SMB2CreateDisposition
+import com.hierynomus.mssmb2.SMB2ImpersonationLevel
 import com.hierynomus.mssmb2.SMB2ShareAccess
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
 import com.hierynomus.smbj.share.DiskShare
+import com.hierynomus.smbj.share.PipeShare
 import com.horizontv.launcher.model.JellyfinBackdrop
 import com.horizontv.launcher.model.JellyfinLibrary
 import com.horizontv.launcher.model.JellyfinMediaType
 import com.horizontv.launcher.model.JellyfinSearchItem
+import java.io.ByteArrayOutputStream
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +49,15 @@ import kotlinx.coroutines.withContext
 data class DiscoveredSmbServer(
   val ip: String,
   val hostName: String? = null,
+)
+
+data class SmbBrowseResult(
+  val host: String,
+  val shareName: String? = null,
+  val subPath: String = "",
+  val currentPath: String,
+  val folders: List<String> = emptyList(),
+  val imageCount: Int = 0,
 )
 
 class SmbWallpaperClient : JellyfinDataSource {
@@ -364,13 +379,299 @@ class SmbWallpaperClient : JellyfinDataSource {
         foundIps.distinct().map { ip ->
           async(Dispatchers.IO) {
             val host = runCatching {
-              val name = InetAddress.getByName(ip).hostName?.trim().orEmpty()
+              val name = InetAddress.getByName(ip).hostName.trim()
               if (name.isNotBlank() && name != ip) name.removeSuffix(".local") else null
             }.getOrNull()
             DiscoveredSmbServer(ip = ip, hostName = host)
           }
         }.awaitAll()
       }.sortedBy { it.ip.substringAfterLast('.').toIntOrNull() ?: 999 }
+    }
+
+    private fun buildAuthContext(username: String, password: String): AuthenticationContext {
+      val trimmedUser = username.trim()
+      if (trimmedUser.isBlank()) return AuthenticationContext.guest()
+      val domain = if (trimmedUser.contains('\\')) trimmedUser.substringBefore('\\') else ""
+      val user = if (trimmedUser.contains('\\')) trimmedUser.substringAfter('\\') else trimmedUser
+      return AuthenticationContext(user, password.toCharArray(), domain)
+    }
+
+    /**
+     * Lists non-hidden disk shares on an SMB server via IPC$\srvsvc DCE/RPC NetShareEnumAll (level 1).
+     */
+    suspend fun listServerShares(
+      rawHost: String,
+      username: String = "",
+      password: String = "",
+    ): Result<SmbBrowseResult> = withContext(Dispatchers.IO) {
+      runCatching {
+        val cleaned = rawHost.trim().replace('\\', '/').removePrefix("smb://").removePrefix("SMB://").trimStart('/')
+        val hostPart = cleaned.substringBefore('/')
+        val host = hostPart.substringBefore(':').trim()
+        val port = hostPart.substringAfter(':', "445").toIntOrNull() ?: 445
+        if (host.isBlank()) throw IllegalArgumentException("Enter an SMB server IP or hostname")
+
+        val config = SmbConfig.builder()
+          .withTimeout(10, TimeUnit.SECONDS)
+          .withSoTimeout(12, TimeUnit.SECONDS)
+          .build()
+        val auth = buildAuthContext(username, password)
+        val client = SMBClient(config)
+        try {
+          client.connect(host, port).use { connection ->
+            connection.authenticate(auth).use { session ->
+              val pipeShare = session.connectShare("IPC$") as? PipeShare
+                ?: throw IllegalStateException("Server did not expose IPC$ share enumeration")
+              pipeShare.use { ipc ->
+                val pipe = ipc.open(
+                  "srvsvc",
+                  SMB2ImpersonationLevel.Impersonation,
+                  EnumSet.of(AccessMask.MAXIMUM_ALLOWED),
+                  EnumSet.of(FileAttributes.FILE_ATTRIBUTE_NORMAL),
+                  SMB2ShareAccess.ALL,
+                  SMB2CreateDisposition.FILE_OPEN,
+                  null,
+                )
+                pipe.use { p ->
+                  // 1. DCE/RPC Bind to SRVSVC v3.0
+                  val bindResp = p.transact(buildSrvsvcBindPacket())
+                  if (bindResp.size < 16 || bindResp[2].toInt() != 12) {
+                    throw IllegalStateException("SRVSVC RPC bind rejected by $host")
+                  }
+                  // 2. DCE/RPC Request: NetShareEnumAll (opnum 15, level 1)
+                  val firstFrag = p.transact(buildNetShareEnumAllPacket(host))
+                  val stubOut = ByteArrayOutputStream()
+                  var frag = firstFrag
+                  while (frag.size >= 24) {
+                    val flags = frag[3].toInt() and 0xFF
+                    val fragLen = ((frag[8].toInt() and 0xFF) or ((frag[9].toInt() and 0xFF) shl 8))
+                      .coerceAtMost(frag.size)
+                    if (fragLen > 24) {
+                      stubOut.write(frag, 24, fragLen - 24)
+                    }
+                    if ((flags and 0x02) != 0) break // PFC_LAST_FRAG
+                    val nextBuf = ByteArray(16384)
+                    val read = p.read(nextBuf)
+                    if (read <= 0) break
+                    frag = nextBuf.copyOf(read)
+                  }
+                  val shares = parseNetShareEnumAllLevel1(stubOut.toByteArray())
+                  SmbBrowseResult(
+                    host = host,
+                    shareName = null,
+                    subPath = "",
+                    currentPath = "smb://$host/",
+                    folders = shares,
+                    imageCount = 0,
+                  )
+                }
+              }
+            }
+          }
+        } finally {
+          runCatching { client.close() }
+        }
+      }
+    }
+
+    /**
+     * Lists subdirectories and counts image files inside a specific SMB share + optional subfolder path.
+     */
+    suspend fun listShareFolders(
+      rawHost: String,
+      shareName: String,
+      subPath: String = "",
+      username: String = "",
+      password: String = "",
+    ): Result<SmbBrowseResult> = withContext(Dispatchers.IO) {
+      runCatching {
+        val cleaned = rawHost.trim().replace('\\', '/').removePrefix("smb://").removePrefix("SMB://").trimStart('/')
+        val hostPart = cleaned.substringBefore('/')
+        val host = hostPart.substringBefore(':').trim()
+        val port = hostPart.substringAfter(':', "445").toIntOrNull() ?: 445
+        val cleanShare = shareName.trim().trim('/', '\\')
+        val cleanSub = subPath.trim().replace('/', '\\').trim('\\')
+        if (host.isBlank() || cleanShare.isBlank()) {
+          throw IllegalArgumentException("Host and share name are required")
+        }
+
+        val config = SmbConfig.builder()
+          .withTimeout(10, TimeUnit.SECONDS)
+          .withSoTimeout(12, TimeUnit.SECONDS)
+          .build()
+        val authCandidates = if (username.isBlank()) {
+          listOf(AuthenticationContext.guest(), AuthenticationContext.anonymous())
+        } else {
+          listOf(buildAuthContext(username, password))
+        }
+        val client = SMBClient(config)
+        try {
+          var lastError: Throwable? = null
+          for (auth in authCandidates) {
+            try {
+              client.connect(host, port).use { connection ->
+                connection.authenticate(auth).use { session ->
+                  val share = session.connectShare(cleanShare) as? DiskShare
+                    ?: throw IllegalStateException("$cleanShare is not a browseable folder share")
+                  return@withContext Result.success(
+                    share.use { disk ->
+                      val folders = mutableListOf<String>()
+                      var imageCount = 0
+                      val rawList = runCatching { disk.list(cleanSub) }.getOrElse { disk.list(cleanSub, "*") }
+                      for (entry in rawList) {
+                        val name = entry.fileName.orEmpty()
+                        if (name.isBlank() || name == "." || name == ".." || name.startsWith(".") || name.startsWith("$") || name == "@eaDir" || name == "System Volume Information") {
+                          continue
+                        }
+                        val isDir = (entry.fileAttributes and 0x10L) != 0L
+                        if (isDir) {
+                          folders += name
+                        } else if (isImageFilename(name)) {
+                          imageCount++
+                        }
+                      }
+                      val normalizedPath = buildString {
+                        append("smb://").append(host)
+                        if (port != 445) append(':').append(port)
+                        append('/').append(cleanShare)
+                        if (cleanSub.isNotEmpty()) append('/').append(cleanSub.replace('\\', '/'))
+                      }
+                      SmbBrowseResult(
+                        host = host,
+                        shareName = cleanShare,
+                        subPath = cleanSub.replace('\\', '/'),
+                        currentPath = normalizedPath,
+                        folders = folders.sortedBy { it.lowercase() },
+                        imageCount = imageCount,
+                      )
+                    },
+                  )
+                }
+              }
+            } catch (t: Throwable) {
+              lastError = t
+            }
+          }
+          val msg = lastError?.message.orEmpty()
+          if (msg.contains("ACCESS_DENIED", ignoreCase = true) ||
+            msg.contains("LOGON_FAILURE", ignoreCase = true) ||
+            msg.contains("BAD_NETWORK_NAME", ignoreCase = true)
+          ) {
+            throw IllegalStateException("Access denied to \"$cleanShare\" — enter Username & Password below, then tap Browse Shares.")
+          }
+          throw (lastError ?: IllegalStateException("Could not open share \"$cleanShare\""))
+        } finally {
+          runCatching { client.close() }
+        }
+      }
+    }
+
+    private fun buildSrvsvcBindPacket(): ByteArray {
+      val buf = ByteBuffer.allocate(72).order(ByteOrder.LITTLE_ENDIAN)
+      buf.put(5).put(0).put(11).put(0x03) // RPC v5.0, BIND(11), FIRST|LAST
+      buf.putInt(0x10) // Little-endian ASCII/IEEE data rep
+      buf.putShort(72).putShort(0).putInt(1) // frag_len=72, auth_len=0, call_id=1
+      buf.putShort(4280).putShort(4280).putInt(0) // max_xmit, max_recv, assoc_group
+      buf.put(1).put(0).putShort(0) // n_context_elem=1
+      buf.putShort(0).put(1).put(0) // context_id=0, n_transfer_syn=1
+      // Abstract syntax: SRVSVC 4b324fc8-1670-01d3-1278-5a47bf6ee188 v3.0
+      buf.putInt(0x4b324fc8).putShort(0x1670).putShort(0x01d3)
+      buf.put(byteArrayOf(0x12, 0x78, 0x5a, 0x47, 0xbf.toByte(), 0x6e, 0xe1.toByte(), 0x88.toByte()))
+      buf.putInt(3)
+      // Transfer syntax: NDR 8a885d04-1ceb-11c9-9fe8-08002b104860 v2.0
+      buf.putInt(0x8a885d04.toInt()).putShort(0x1ceb).putShort(0x11c9)
+      buf.put(byteArrayOf(0x9f.toByte(), 0xe8.toByte(), 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60))
+      buf.putInt(2)
+      return buf.array()
+    }
+
+    private fun buildNetShareEnumAllPacket(host: String): ByteArray {
+      val unc = "\\\\$host\u0000"
+      val uncChars = unc.length
+      val strBytes = unc.toByteArray(Charsets.UTF_16LE)
+      val pad = (4 - (strBytes.size % 4)) % 4
+
+      val stub = ByteBuffer.allocate(16 + strBytes.size + pad + 32).order(ByteOrder.LITTLE_ENDIAN)
+      // server_unc (unique pointer to conformant varying string)
+      stub.putInt(0x00020000)
+      stub.putInt(uncChars).putInt(0).putInt(uncChars)
+      stub.put(strBytes)
+      repeat(pad) { stub.put(0) }
+      // info_struct: level=1, switch=1, container_ptr=0x00020004, entries_read=0, array_ptr=0
+      stub.putInt(1)
+      stub.putInt(1)
+      stub.putInt(0x00020004)
+      stub.putInt(0)
+      stub.putInt(0)
+      // prefmaxlen = -1 (0xFFFFFFFF), resume_handle ptr = 0x00020008, resume_handle = 0
+      stub.putInt(-1)
+      stub.putInt(0x00020008)
+      stub.putInt(0)
+
+      val stubArr = stub.array()
+      val totalLen = 24 + stubArr.size
+      val pkt = ByteBuffer.allocate(totalLen).order(ByteOrder.LITTLE_ENDIAN)
+      pkt.put(5).put(0).put(0).put(0x03) // RPC v5.0, REQUEST(0), FIRST|LAST
+      pkt.putInt(0x10)
+      pkt.putShort(totalLen.toShort()).putShort(0).putInt(2) // frag_len, auth_len=0, call_id=2
+      pkt.putInt(stubArr.size) // alloc_hint
+      pkt.putShort(0).putShort(15) // context_id=0, opnum=15 (NetShareEnumAll)
+      pkt.put(stubArr)
+      return pkt.array()
+    }
+
+    private fun parseNetShareEnumAllLevel1(stub: ByteArray): List<String> {
+      if (stub.size < 28) return emptyList()
+      val buf = ByteBuffer.wrap(stub).order(ByteOrder.LITTLE_ENDIAN)
+      fun align4() {
+        val rem = buf.position() % 4
+        if (rem != 0) buf.position((buf.position() + (4 - rem)).coerceAtMost(buf.limit()))
+      }
+      fun readNdrString(): String {
+        align4()
+        if (buf.remaining() < 12) return ""
+        buf.int // maxCount
+        buf.int // offset
+        val actualCount = buf.int.coerceIn(0, 1024)
+        val byteCount = (actualCount * 2).coerceAtMost(buf.remaining())
+        val bytes = ByteArray(byteCount)
+        buf.get(bytes)
+        align4()
+        return String(bytes, Charsets.UTF_16LE).trimEnd('\u0000')
+      }
+
+      val level = buf.int
+      val switchLevel = buf.int
+      if (level != 1 || switchLevel != 1) return emptyList()
+      val containerPtr = buf.int
+      if (containerPtr == 0) return emptyList()
+      val entriesRead = buf.int.coerceIn(0, 512)
+      val arrayPtr = buf.int
+      if (entriesRead == 0 || arrayPtr == 0) return emptyList()
+      val maxCount = buf.int.coerceIn(0, 512)
+      val count = minOf(entriesRead, maxCount)
+
+      // Read fixed array of SHARE_INFO_1 structs: (namePtr, type, commentPtr)
+      val entries = ArrayList<Triple<Int, Int, Int>>(count)
+      repeat(count) {
+        if (buf.remaining() < 12) return@repeat
+        val namePtr = buf.int
+        val shareType = buf.int
+        val commentPtr = buf.int
+        entries += Triple(namePtr, shareType, commentPtr)
+      }
+
+      // Read deferred UTF-16LE strings in order
+      val shares = mutableListOf<String>()
+      for ((namePtr, shareType, commentPtr) in entries) {
+        val name = if (namePtr != 0) readNdrString() else ""
+        if (commentPtr != 0) readNdrString() // skip remark
+        val baseType = shareType and 0x0FFFFFFF
+        if (baseType == 0 && name.isNotBlank() && !name.endsWith("$")) {
+          shares += name
+        }
+      }
+      return shares.distinct().sortedBy { it.lowercase() }
     }
   }
 }
