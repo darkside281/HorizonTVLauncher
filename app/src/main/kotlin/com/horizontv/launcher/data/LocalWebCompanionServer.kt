@@ -418,7 +418,9 @@ class LocalWebCompanionServer(
             status = 200,
             contentType = "application/json; charset=utf-8",
             body = raw,
-            extraHeaders = mapOf("Content-Disposition" to "attachment; filename=\"horizon-tv-backup.json\""),
+            extraHeaders = mapOf(
+              "Content-Disposition" to "attachment; filename=\"horizon-tv-backup-${java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())}.json\"",
+            ),
           )
         }
 

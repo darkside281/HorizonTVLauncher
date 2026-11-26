@@ -1,6 +1,11 @@
 package com.horizontv.launcher
 
+import android.content.Context
+import android.content.res.Configuration
 import android.service.dreams.DreamService
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -62,6 +67,25 @@ class HorizonDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOw
   override val savedStateRegistry: SavedStateRegistry
     get() = savedStateRegistryController.savedStateRegistry
 
+  // Match MainActivity's 1152dp resolution-independent scaling on 720p, 1080p, and 4K panels
+  override fun attachBaseContext(newBase: Context) {
+    val metrics = newBase.resources.displayMetrics
+    val longSidePx = max(metrics.widthPixels, metrics.heightPixels)
+    val shortSidePx = min(metrics.widthPixels, metrics.heightPixels)
+    if (longSidePx <= 0) {
+      super.attachBaseContext(newBase)
+      return
+    }
+    val targetDpi = (longSidePx * 160f / 1152f).roundToInt().coerceAtLeast(80)
+    val config = Configuration(newBase.resources.configuration).apply {
+      densityDpi = targetDpi
+      screenWidthDp = (longSidePx * 160f / targetDpi).roundToInt()
+      screenHeightDp = (shortSidePx * 160f / targetDpi).roundToInt()
+      smallestScreenWidthDp = screenHeightDp
+    }
+    super.attachBaseContext(newBase.createConfigurationContext(config))
+  }
+
   override fun onCreate() {
     super.onCreate()
     savedStateRegistryController.performRestore(null)
@@ -113,18 +137,22 @@ class HorizonDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOw
     dreamScope = scope
     val s = settingsState
 
-    // Load weather if enabled
+    // Load and periodically refresh weather every 30 minutes if enabled
     if (s.screensaverShowWeather && s.isWeatherConfigured) {
       val lat = s.weatherLatitude
       val lon = s.weatherLongitude
       if (lat != null && lon != null) {
         scope.launch {
-          WeatherClient().fetchForecast(
-            locationName = s.weatherLocationName,
-            latitude = lat,
-            longitude = lon,
-            useFahrenheit = s.weatherUseFahrenheit,
-          ).onSuccess { weatherData = it }
+          val weatherClient = WeatherClient()
+          while (isActive) {
+            weatherClient.fetchForecast(
+              locationName = s.weatherLocationName,
+              latitude = lat,
+              longitude = lon,
+              useFahrenheit = s.weatherUseFahrenheit,
+            ).onSuccess { weatherData = it }
+            delay(30L * 60_000L)
+          }
         }
       }
     }
@@ -167,11 +195,13 @@ class HorizonDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOw
 
     val token = s.tokenFor(provider)
     var index = 0
+    var consecutiveMisses = 0
     while (dreamScope?.isActive == true) {
       val item = backdrops[index % backdrops.size]
       index++
       val img = client.downloadBackdropImage(imageUrl = item.imageUrl, token = token)
       if (img != null) {
+        consecutiveMisses = 0
         val logo = if (s.screensaverShowTitle && !item.logoUrl.isNullOrBlank()) {
           client.downloadLogoImage(logoUrl = item.logoUrl, token = token)
         } else {
@@ -180,7 +210,9 @@ class HorizonDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOw
         artworkSlide = JellyfinSlide(backdrop = item, image = img, logoImage = logo)
         delay(intervalMs)
       } else {
-        delay(500L)
+        consecutiveMisses++
+        val backoffMs = if (consecutiveMisses >= backdrops.size) 30_000L else 500L
+        delay(backoffMs)
       }
     }
   }
@@ -190,15 +222,19 @@ class HorizonDreamService : DreamService(), LifecycleOwner, SavedStateRegistryOw
     val entries = loader.listPhotos(s.screensaverPhotoFolderUri, s.screensaverPhotoUris).shuffled()
     if (entries.isEmpty()) return
     var index = 0
+    var consecutiveMisses = 0
     while (dreamScope?.isActive == true) {
       val entry = entries[index % entries.size]
       index++
       val slide = loader.loadPhoto(entry)
       if (slide != null) {
+        consecutiveMisses = 0
         photoSlide = slide
         delay(intervalMs)
       } else {
-        delay(500L)
+        consecutiveMisses++
+        val backoffMs = if (consecutiveMisses >= entries.size) 30_000L else 500L
+        delay(backoffMs)
       }
     }
   }

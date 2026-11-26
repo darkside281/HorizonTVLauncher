@@ -674,7 +674,8 @@ class MainActivity : ComponentActivity() {
     val onOpenHomeSettings = activity::requestDefaultHomeLauncher
     val onOpenPlayStore = vm::openPlayStore
     val onBackupConfig: () -> Unit = {
-      runCatching { activity.backupConfigLauncher.launch("horizon-tv-backup.json") }
+      val stamp = java.text.SimpleDateFormat("yyyy-MM-dd_HH-mm", java.util.Locale.US).format(java.util.Date())
+      runCatching { activity.backupConfigLauncher.launch("horizon-tv-backup-$stamp.json") }
     }
     val onRestoreConfig: () -> Unit = {
       runCatching { activity.restoreConfigLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }

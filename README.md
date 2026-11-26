@@ -132,10 +132,10 @@ Horizon TV Launcher targets **Android 7.0+ (API 24)** up to **Android 16**, requ
 
 ## Installation
 
-1. Download the latest APK (`HorizonTVLauncher-v2.5.57.apk`, ~2.4 MB R8-optimized) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+1. Download the latest APK (`HorizonTVLauncher-v2.5.58.apk`, ~2.4 MB R8-optimized) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 2. Sideload it onto your Android TV / Google TV device (via USB, file manager, or ADB):
    ```bash
-   adb install -r HorizonTVLauncher-v2.5.57.apk
+   adb install -r HorizonTVLauncher-v2.5.58.apk
    ```
 3. Open **Horizon TV Launcher** (follow the 4-step Setup Wizard, or open **Customize → Launcher & Apps → Set as Default Home**).
    - **Android TV (Nvidia Shield, Sony, etc.)** — optionally disable the stock launcher via ADB so the Home button always opens Horizon:

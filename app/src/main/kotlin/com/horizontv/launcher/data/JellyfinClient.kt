@@ -323,7 +323,15 @@ class JellyfinClient : JellyfinDataSource {
         if (conn.responseCode !in 200..299) return@runCatching null
         val bytes = conn.inputStream.use { it.readBytes() }
         if (bytes.isEmpty()) return@runCatching null
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+        var sampleSize = 1
+        while (bounds.outWidth / sampleSize > 800 || bounds.outHeight / sampleSize > 400) {
+          sampleSize *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
       } finally {
         conn.disconnect()
       }

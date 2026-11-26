@@ -103,6 +103,15 @@ object SettingsBackupCodec : SettingsBackupSerializer {
     root.put("tileCornerStyle", settings.tileCornerStyle)
     root.put("tileFocusStyle", settings.tileFocusStyle)
     root.put("updateCheckSchedule", settings.updateCheckSchedule)
+    if (!settings.localWallpaperFolderUri.isNullOrBlank()) {
+      root.put("localWallpaperFolderUri", settings.localWallpaperFolderUri)
+    }
+    if (!settings.screensaverPhotoFolderUri.isNullOrBlank()) {
+      root.put("screensaverPhotoFolderUri", settings.screensaverPhotoFolderUri)
+    }
+    val ssPhotoUrisArr = JSONArray()
+    settings.screensaverPhotoUris.forEach { ssPhotoUrisArr.put(it) }
+    root.put("screensaverPhotoUris", ssPhotoUrisArr)
     root.put("parentalPin", settings.parentalPin)
     root.put("pinProtectSettings", settings.pinProtectSettings)
     val pinLockedArr = JSONArray()
@@ -326,6 +335,29 @@ object SettingsBackupCodec : SettingsBackupSerializer {
       updateCheckSchedule = UpdateCheckSchedule.fromId(
         root.optString("updateCheckSchedule", existing.updateCheckSchedule),
       ).id,
+      localWallpaperFolderUri = if (root.has("localWallpaperFolderUri")) {
+        root.optString("localWallpaperFolderUri", "").ifBlank { null }
+      } else {
+        existing.localWallpaperFolderUri
+      },
+      screensaverPhotoFolderUri = if (root.has("screensaverPhotoFolderUri")) {
+        root.optString("screensaverPhotoFolderUri", "").ifBlank { null }
+      } else {
+        existing.screensaverPhotoFolderUri
+      },
+      screensaverPhotoUris = if (root.has("screensaverPhotoUris")) {
+        val arr = root.optJSONArray("screensaverPhotoUris")
+        buildList {
+          if (arr != null) {
+            for (i in 0 until arr.length()) {
+              val uri = arr.optString(i, "").trim()
+              if (uri.isNotEmpty()) add(uri)
+            }
+          }
+        }
+      } else {
+        existing.screensaverPhotoUris
+      },
       parentalPin = root.optString("parentalPin", existing.parentalPin)
         .filter { it.isDigit() }
         .take(4)

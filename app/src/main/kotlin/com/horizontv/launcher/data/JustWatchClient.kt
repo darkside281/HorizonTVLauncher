@@ -389,7 +389,10 @@ class JustWatchClient : StreamingSearchDataSource {
       }
     }
     if (deep != null && deep.contains("tv.apple.com", ignoreCase = true)) {
-      deep = deep.replace(Regex("""([?&])playableId=[^&#]+&?"""), "$1").replace("?#", "#").replace("&#", "#")
+      deep = deep.replace(Regex("""([?&])playableId=[^&#]+&?"""), "$1")
+        .replace("?#", "#")
+        .replace("&#", "#")
+        .trimEnd('?', '&')
     }
     if (web != null && web.contains("tv.apple.com", ignoreCase = true)) {
       web = web.replace(Regex("""([?&])playableId=[^&#]+&?"""), "$1").trimEnd('?', '&')
@@ -469,7 +472,7 @@ class JustWatchClient : StreamingSearchDataSource {
                 monetizationType
                 presentationType
                 standardWebURL
-                deeplinkURL(platform: ANDROID_TV)
+                deeplinkURL(platform: WEB)
                 package { clearName shortName packageId }
               }
             }

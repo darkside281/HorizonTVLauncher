@@ -297,6 +297,11 @@ class AppRepository(private val context: Context) : InstalledAppsDataSource {
       decoded
     }
     val dir = File(context.filesDir, "custom_wallpapers").apply { mkdirs() }
+    dir.listFiles()?.forEach { old ->
+      if (old.name.startsWith("companion_") && old.name.endsWith(".jpg")) {
+        runCatching { old.delete() }
+      }
+    }
     val outFile = File(dir, "companion_${System.currentTimeMillis()}.jpg")
     FileOutputStream(outFile).use { fos ->
       finalBitmap.compress(Bitmap.CompressFormat.JPEG, 92, fos)
@@ -620,7 +625,7 @@ class AppRepository(private val context: Context) : InstalledAppsDataSource {
       s == "prv" || s == "pva" || s == "amz" || name.contains("prime") || name.contains("amazon") ->
         listOf("com.amazon.amazonvideo.livingroom", "com.amazon.amazonvideo.livingroom.nvidia", "com.amazon.avod.thirdpartyclient")
       s == "dnp" || name.contains("disney") -> listOf("com.disney.disneyplus")
-      s == "pmp" || s == "ppp" || s == "pba" || name == "paramount+" -> listOf("com.cbs.ca", "com.cbs.app")
+      s == "pmp" || s == "ppp" || s == "pba" || name == "paramount+" -> listOf("com.cbs.ott", "com.cbs.ca", "com.cbs.app")
       s == "itv" || s == "itp" || name == "itvx" -> listOf("air.ITVMobilePlayer", "com.itv.tenft.itvhub")
       s == "atp" || s == "itu" || name.contains("apple tv") -> listOf("com.apple.atve.androidtv.appletv")
       s == "bbc" || name.contains("iplayer") -> listOf("uk.co.bbc.iplayer")

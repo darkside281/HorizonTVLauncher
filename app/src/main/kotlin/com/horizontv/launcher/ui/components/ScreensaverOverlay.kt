@@ -91,7 +91,7 @@ fun ScreensaverOverlay(
     while (true) {
       nowMillis = System.currentTimeMillis()
       val remainder = nowMillis % 60_000L
-      delay((60_000L - remainder).coerceAtLeast(1_000L))
+      delay((60_000L - remainder + 250L).coerceAtLeast(1_000L))
     }
   }
 

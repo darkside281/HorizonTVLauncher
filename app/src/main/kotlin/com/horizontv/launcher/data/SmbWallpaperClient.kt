@@ -274,9 +274,20 @@ class SmbWallpaperClient : JellyfinDataSource {
                 null,
               )
               file.use { f ->
-                val bytes = f.inputStream.use { it.readBytes() }
-                if (bytes.isEmpty()) return@runCatching null
-                decodeSampledBytes(bytes, maxWidth = 1920, maxHeight = 1080)
+                // Two-pass streaming decode avoids loading huge 20MP+ camera photos into a ByteArray on the heap
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                f.inputStream.use { stream ->
+                  BitmapFactory.decodeStream(stream, null, bounds)
+                }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+                var sampleSize = 1
+                while (bounds.outWidth / sampleSize > 1920 * 2 || bounds.outHeight / sampleSize > 1080 * 2) {
+                  sampleSize *= 2
+                }
+                val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                f.inputStream.use { stream ->
+                  BitmapFactory.decodeStream(stream, null, opts)?.asImageBitmap()
+                }
               }
             }
           }
