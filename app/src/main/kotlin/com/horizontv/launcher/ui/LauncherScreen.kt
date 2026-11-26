@@ -918,6 +918,8 @@ fun LauncherScreen(
                       isAppPinLocked = { pkg -> state.settings.isAppPinLocked(pkg) },
                       showHeader = true,
                       compactVerticalPadding = minimalistMode,
+                      cornerStyle = tileCornerStyle,
+                      focusStyle = tileFocusStyle,
                       tileOpacity = tileOpacity,
                       tileSpacingDp = tileSpacingDp,
                       showAddTile = state.settings.showAddAppTile && !state.settings.lockHomeLayout,

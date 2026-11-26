@@ -180,7 +180,7 @@ class LocalWebCompanionServer(
         method == "POST" && path == "/api/servers" -> {
           val json = JSONObject(bodyBytes.toString(Charsets.UTF_8))
           val provider = json.optString("provider", "").trim().lowercase()
-          val url = json.optString("url", "").trim()
+          val url = json.optString("url", "").ifBlank { json.optString("serverUrl", "") }.trim()
           val token = json.optString("token", "").trim()
           bridge.saveServerConfig(provider, url, token)
           bridge.onCompanionActivity("Updated ${provider.uppercase()} settings from browser")
@@ -1739,7 +1739,9 @@ async function scanSmbServers() {
   status.textContent = 'Scanning local network (port 445)…';
   list.innerHTML = '';
   try {
-    const res = await api('/api/smb/scan');
+    const resp = await api('/api/smb/scan');
+    const res = await resp.json();
+    if (!resp.ok) throw new Error(res.error || ('HTTP ' + resp.status));
     const servers = res.servers || [];
     if (!servers.length) {
       status.textContent = 'No SMB servers found on this subnet.';
@@ -1782,7 +1784,7 @@ async function browseSmb(host, shareName, subPath) {
   countEl.textContent = '';
   listEl.innerHTML = '';
   try {
-    const res = await api('/api/smb/browse', {
+    const resp = await api('/api/smb/browse', {
       method: 'POST',
       body: JSON.stringify({
         host,
@@ -1792,6 +1794,8 @@ async function browseSmb(host, shareName, subPath) {
         password: document.getElementById('wpSmbPass').value
       })
     });
+    const res = await resp.json();
+    if (!resp.ok) throw new Error(res.error || ('HTTP ' + resp.status));
     SMB_BROWSE = { host: res.host || host, shareName: res.shareName || '', subPath: res.subPath || '' };
     pathEl.textContent = res.currentPath || ('smb://' + host + '/');
     document.getElementById('wpSmbUrl').value = res.currentPath || ('smb://' + host + '/');
@@ -1850,7 +1854,7 @@ async function saveWpSmbShare() {
   if (!url) return toast('Enter an SMB share path like smb://192.168.0.50/Wallpapers');
   const user = document.getElementById('wpSmbUser').value.trim();
   const pass = document.getElementById('wpSmbPass').value;
-  await api('/api/servers', { method:'POST', body:JSON.stringify({ provider:'smb', serverUrl:url, token:user + '\n' + pass }) });
+  await api('/api/servers', { method:'POST', body:JSON.stringify({ provider:'smb', url:url, token:user + '\n' + pass }) });
   toast('SMB Share connected & slideshow started!');
   loadState();
 }
