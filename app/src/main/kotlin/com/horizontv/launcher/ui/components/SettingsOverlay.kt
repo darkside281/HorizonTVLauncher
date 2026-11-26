@@ -27,6 +27,8 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.DeleteOutline
@@ -258,181 +260,193 @@ fun SettingsOverlay(
   onSetUpdateCheckSchedule: (UpdateCheckSchedule) -> Unit = {},
   onOpenUpdateDialog: () -> Unit = {},
 ) {
-  var activeCategory by remember { mutableStateOf(SettingsCategory.ROWS) }
+  var isAdvancedMode by remember { mutableStateOf(false) }
+  var drilledCategory by remember { mutableStateOf<SettingsCategory?>(null) }
   var activeHomeSection by remember { mutableStateOf(0) } // 0 = Rows & Tiles, 1 = Clock & All Apps
   var activeSearchSection by remember { mutableStateOf(0) } // 0 = General, 1 = Region & Ratings, 2 = My Services, 3 = Apps
   var activeWallpaperSection by remember { mutableStateOf(0) } // 0 = Source & Libraries, 1 = Slideshow & Display
   var activeScreensaverSection by remember { mutableStateOf(0) } // 0 = Mode & Timing, 1 = Display & Overlays
   var activeServiceCategory by remember { mutableStateOf(JustWatchServiceCategory.MAIN_SERVICES) }
   var confirmResetLauncher by remember { mutableStateOf(false) }
-  val tabRequesters = remember {
-    SettingsCategory.entries.associateWith { FocusRequester() }
-  }
+  val rootEntryRequester = remember { FocusRequester() }
+  val backButtonRequester = remember { FocusRequester() }
   val rightPaneEntryRequester = remember { FocusRequester() }
 
+  val categorySubtitle: (SettingsCategory) -> String = { category ->
+    when (category) {
+      SettingsCategory.ROWS -> if (settings.lockHomeLayout) {
+        "${settings.rows.size} row${if (settings.rows.size == 1) "" else "s"} • Locked"
+      } else {
+        "${settings.rows.size} row${if (settings.rows.size == 1) "" else "s"}"
+      }
+      SettingsCategory.SEARCH -> if (!settings.showSearchBar) {
+        "Hidden"
+      } else {
+        val enabledCount = buildList {
+          if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_APPS)) add("Apps")
+          if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JUSTWATCH)) add("JustWatch")
+          if (settings.isJellyfinConfigured && settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JELLYFIN)) add("Jellyfin")
+          externalSearchProviders.forEach { p ->
+            if (settings.isSearchProviderEnabled(p.id)) add(p.label)
+          }
+          if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_YOUTUBE)) add("YouTube")
+          if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_WEB)) add("Web")
+        }.size
+        "ON • $enabledCount provider${if (enabledCount == 1) "" else "s"}"
+      }
+      SettingsCategory.JELLYFIN -> {
+        val provider = settings.activeWallpaperProvider
+        when {
+          settings.jellyfinEnabled && jellyfinBackdropCount > 0 ->
+            "${provider.label} • $jellyfinBackdropCount backdrops"
+          settings.jellyfinEnabled -> "${provider.label} • Loading…"
+          settings.isProviderConfigured(provider) -> "${provider.label} • Paused"
+          else -> "${provider.label} • Off"
+        }
+      }
+      SettingsCategory.SCREENSAVER -> if (settings.screensaverEnabled) {
+        "${settings.activeScreensaverMode.label} • ${settings.screensaverTimeoutMinutes}m"
+      } else {
+        "${settings.activeScreensaverMode.label} • Off"
+      }
+      SettingsCategory.WEATHER -> when {
+        settings.weatherEnabled && settings.isWeatherConfigured ->
+          "${settings.weatherLocationName.substringBefore(",")} • ${settings.weatherDays}d • ${if (settings.weatherUseFahrenheit) "°F" else "°C"}"
+        settings.isWeatherConfigured -> "Hidden"
+        else -> "Off"
+      }
+      SettingsCategory.APPEARANCE -> LauncherPalettes.accentById(settings.accentId).name
+      SettingsCategory.SYSTEM -> if (isDefaultHome) "Default Active ✓" else "Set Default"
+      SettingsCategory.PARENTAL -> if (settings.isPinEnabled) {
+        "PIN Active • ${settings.pinLockedPackages.size} locked"
+      } else {
+        "Off"
+      }
+      SettingsCategory.UPDATES -> if (availableUpdate != null) {
+        "Update: v${availableUpdate.versionName}"
+      } else {
+        "v$appVersionName • ${settings.activeUpdateCheckSchedule.label}"
+      }
+      SettingsCategory.ABOUT -> "v$appVersionName"
+    }
+  }
+
   Dialog(
-    onDismissRequest = onClose,
+    onDismissRequest = {
+      if (drilledCategory != null) {
+        drilledCategory = null
+      } else {
+        onClose()
+      }
+    },
     properties = DialogProperties(
       usePlatformDefaultWidth = false,
       dismissOnBackPress = true,
       dismissOnClickOutside = true,
     ),
   ) {
-    LaunchedEffect(Unit) {
-      runCatching { tabRequesters[SettingsCategory.ROWS]?.requestFocus() }
+    val drawerWidth = 510.dp
+
+    LaunchedEffect(drilledCategory, isAdvancedMode) {
+      if (drilledCategory == null) {
+        runCatching { rootEntryRequester.requestFocus() }
+      } else {
+        runCatching { backButtonRequester.requestFocus() }
+      }
     }
 
+    // Subtle left-to-right scrim keeps the real TV Home screen live & visible on the left!
     Box(
       modifier = Modifier
         .fillMaxSize()
-        .background(Color.Black.copy(alpha = 0.62f))
-        .pointerInput(Unit) { detectTapGestures { onClose() } },
-      contentAlignment = Alignment.Center,
+        .background(
+          Brush.horizontalGradient(
+            colors = listOf(
+              Color.Black.copy(alpha = 0.08f),
+              Color.Black.copy(alpha = 0.28f),
+              Color.Black.copy(alpha = 0.58f),
+            ),
+          ),
+        )
+        .pointerInput(Unit) { detectTapGestures { onClose() } }
+        .padding(top = 18.dp, bottom = 18.dp, end = 20.dp),
+      contentAlignment = Alignment.CenterEnd,
     ) {
       Surface(
         modifier = Modifier
-          .width(860.dp)
-          .height(540.dp)
+          .width(drawerWidth)
+          .fillMaxHeight()
           .pointerInput(Unit) { detectTapGestures { /* consume */ } },
-        shape = RoundedCornerShape(28.dp),
-        color = Color(0xEC0D1422),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xEC0B1220),
         border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.16f)),
-        tonalElevation = 16.dp,
+        tonalElevation = 18.dp,
       ) {
-        Row(modifier = Modifier.fillMaxSize()) {
-          // LEFT CATEGORY SIDEBAR
-          val sidebarScroll = rememberScrollState()
-          Column(
-            modifier = Modifier
-              .width(248.dp)
-              .fillMaxHeight()
-              .background(Color(0xFF080D18).copy(alpha = 0.92f))
-              .padding(horizontal = 16.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-          ) {
-            Column(
-              modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-              verticalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+          modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+          // DRAWER HEADER
+          val currentCategory = drilledCategory
+          if (currentCategory == null) {
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-              Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+              Column {
                 Text(
                   text = "Customize",
-                  style = MaterialTheme.typography.headlineMedium,
+                  style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                   color = Color.White,
                 )
                 Text(
-                  text = "Horizon TV Launcher",
+                  text = if (isAdvancedMode) "All sections & settings" else "Quick essentials • Live preview",
                   style = MaterialTheme.typography.labelMedium,
-                  color = Color.White.copy(alpha = 0.54f),
+                  color = Color.White.copy(alpha = 0.56f),
                 )
               }
 
-              Column(
-                modifier = Modifier
-                  .weight(1f)
-                  .fillMaxWidth()
-                  .verticalScroll(sidebarScroll),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
               ) {
-                SettingsCategory.entries.forEach { category ->
-                  val subtitle = when (category) {
-                    SettingsCategory.ROWS -> if (settings.lockHomeLayout) {
-                      "${settings.rows.size} row${if (settings.rows.size == 1) "" else "s"} • Locked"
-                    } else {
-                      "${settings.rows.size} row${if (settings.rows.size == 1) "" else "s"}"
-                    }
-                    SettingsCategory.SEARCH -> if (!settings.showSearchBar) {
-                      "Hidden"
-                    } else {
-                      val enabledCount = buildList {
-                        if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_APPS)) add("Apps")
-                        if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JUSTWATCH)) add("JustWatch")
-                        if (settings.isJellyfinConfigured && settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_JELLYFIN)) add("Jellyfin")
-                        externalSearchProviders.forEach { p ->
-                          if (settings.isSearchProviderEnabled(p.id)) add(p.label)
-                        }
-                        if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_YOUTUBE)) add("YouTube")
-                        if (settings.isSearchProviderEnabled(LauncherSettings.SEARCH_PROVIDER_WEB)) add("Web")
-                      }.size
-                      "ON • $enabledCount provider${if (enabledCount == 1) "" else "s"}"
-                    }
-                    SettingsCategory.JELLYFIN -> {
-                      val provider = settings.activeWallpaperProvider
-                      when {
-                        settings.jellyfinEnabled && jellyfinBackdropCount > 0 ->
-                          "${provider.label} • $jellyfinBackdropCount"
-                        settings.jellyfinEnabled -> "${provider.label} • Loading…"
-                        settings.isProviderConfigured(provider) -> "${provider.label} • Paused"
-                        else -> "${provider.label} • Off"
-                      }
-                    }
-                    SettingsCategory.SCREENSAVER -> if (settings.screensaverEnabled) {
-                      "${settings.activeScreensaverMode.label} • ${settings.screensaverTimeoutMinutes}m"
-                    } else {
-                      "${settings.activeScreensaverMode.label} • Off"
-                    }
-                    SettingsCategory.WEATHER -> when {
-                      settings.weatherEnabled && settings.isWeatherConfigured ->
-                        "${settings.weatherLocationName.substringBefore(",")} • ${settings.weatherDays}d"
-                      settings.isWeatherConfigured -> "Hidden"
-                      else -> "Off"
-                    }
-                    SettingsCategory.APPEARANCE -> LauncherPalettes.accentById(settings.accentId).name
-                    SettingsCategory.SYSTEM -> if (isDefaultHome) "Default Active ✓" else "Set Default"
-                    SettingsCategory.PARENTAL -> if (settings.isPinEnabled) {
-                      "PIN Active • ${settings.pinLockedPackages.size} locked"
-                    } else {
-                      "Off"
-                    }
-                    SettingsCategory.UPDATES -> if (availableUpdate != null) {
-                      "Update: v${availableUpdate.versionName}"
-                    } else {
-                      settings.activeUpdateCheckSchedule.label
-                    }
-                    SettingsCategory.ABOUT -> "v$appVersionName"
+                // [ Easy | Advanced ] segmented toggle pill
+                Surface(
+                  shape = RoundedCornerShape(50),
+                  color = Color.White.copy(alpha = 0.08f),
+                  border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)),
+                ) {
+                  Row(
+                    modifier = Modifier.padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                  ) {
+                    DrawerModeChip(
+                      label = "Easy",
+                      selected = !isAdvancedMode,
+                      accent = accent,
+                      onClick = { isAdvancedMode = false },
+                    )
+                    DrawerModeChip(
+                      label = "Advanced",
+                      selected = isAdvancedMode,
+                      accent = accent,
+                      onClick = { isAdvancedMode = true },
+                    )
                   }
-
-                  SidebarCategoryItem(
-                    category = category,
-                    subtitle = subtitle,
-                    selected = activeCategory == category,
-                    accent = accent,
-                    focusRequester = tabRequesters.getValue(category),
-                    rightFocusRequester = rightPaneEntryRequester,
-                    onSelect = { activeCategory = category },
-                  )
                 }
+
+                QuickActionIcon(
+                  icon = Icons.Rounded.Close,
+                  contentDescription = "Close Customize",
+                  accent = accent,
+                  onClick = onClose,
+                )
               }
             }
-
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-              text = "◄ Categories  •  Settings ►",
-              style = MaterialTheme.typography.labelMedium,
-              color = Color.White.copy(alpha = 0.44f),
-              modifier = Modifier.padding(horizontal = 8.dp),
-            )
-          }
-
-          // Subtle vertical separator
-          Box(
-            modifier = Modifier
-              .width(1.dp)
-              .fillMaxHeight()
-              .background(Color.White.copy(alpha = 0.10f)),
-          )
-
-          // RIGHT DETAIL PANE
-          val activeTabRequester = tabRequesters.getValue(activeCategory)
-          Column(
-            modifier = Modifier
-              .weight(1f)
-              .fillMaxHeight()
-              .padding(horizontal = 28.dp, vertical = 22.dp),
-          ) {
-            // Detail Header
+          } else {
+            // Drilled-in Category Header with ‹ Back button
             Row(
               modifier = Modifier.fillMaxWidth(),
               verticalAlignment = Alignment.CenterVertically,
@@ -440,31 +454,31 @@ fun SettingsOverlay(
             ) {
               Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f),
               ) {
-                Box(
-                  modifier = Modifier
-                    .size(38.dp)
-                    .background(accent.primary.copy(alpha = 0.18f), RoundedCornerShape(12.dp)),
-                  contentAlignment = Alignment.Center,
-                ) {
-                  Icon(
-                    imageVector = activeCategory.icon,
-                    contentDescription = null,
-                    tint = accent.primary,
-                    modifier = Modifier.size(20.dp),
-                  )
-                }
-                Column {
+                SettingsActionChip(
+                  icon = Icons.Rounded.ChevronLeft,
+                  label = "Back",
+                  accent = accent,
+                  highlighted = false,
+                  onClick = { drilledCategory = null },
+                  modifier = Modifier.focusRequester(backButtonRequester),
+                )
+                Column(modifier = Modifier.weight(1f)) {
                   Text(
-                    text = activeCategory.title,
-                    style = MaterialTheme.typography.titleLarge,
+                    text = currentCategory.title,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                   )
                   Text(
-                    text = activeCategory.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.60f),
+                    text = currentCategory.description,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White.copy(alpha = 0.56f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                   )
                 }
               }
@@ -476,28 +490,217 @@ fun SettingsOverlay(
                 onClick = onClose,
               )
             }
+          }
 
-            Spacer(modifier = Modifier.height(18.dp))
+          Spacer(modifier = Modifier.height(14.dp))
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(1.dp)
+              .background(Color.White.copy(alpha = 0.10f)),
+          )
+          Spacer(modifier = Modifier.height(14.dp))
 
-            // Scrollable Category Content
-            val detailScroll = rememberScrollState()
-            LaunchedEffect(
-              activeCategory,
-              activeHomeSection,
-              activeSearchSection,
-              activeWallpaperSection,
-              activeScreensaverSection,
-            ) {
-              detailScroll.scrollTo(0)
-            }
+          // SCROLLABLE DRAWER BODY
+          val detailScroll = rememberScrollState()
+          LaunchedEffect(
+            drilledCategory,
+            isAdvancedMode,
+            activeHomeSection,
+            activeSearchSection,
+            activeWallpaperSection,
+            activeScreensaverSection,
+          ) {
+            detailScroll.scrollTo(0)
+          }
 
-            Column(
-              modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(detailScroll),
-              verticalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-              when (activeCategory) {
+          Column(
+            modifier = Modifier
+              .weight(1f)
+              .fillMaxWidth()
+              .verticalScroll(detailScroll),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+          ) {
+            if (currentCategory == null && !isAdvancedMode) {
+              // ══════════════════════════════════════════════════
+              // EASY MODE — Spacious Essentials + Live Preview
+              // ══════════════════════════════════════════════════
+              SettingsToggleRow(
+                title = "Minimalist Bottom-Dock",
+                subtitle = "Keep artwork open with a single bottom dock row",
+                checked = settings.minimalistDockMode,
+                accent = accent,
+                onClick = onToggleMinimalistDockMode,
+                modifier = Modifier.focusRequester(rootEntryRequester),
+              )
+
+              SettingsToggleRow(
+                title = "Continue Watching Row",
+                subtitle = "Resume movies & next episodes from Jellyfin, Plex or Emby",
+                checked = settings.showContinueWatchingRow,
+                accent = accent,
+                onClick = onToggleShowContinueWatchingRow,
+              )
+
+              // Inline Tile Size Picker (Live Preview!)
+              Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White.copy(alpha = 0.06f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                modifier = Modifier.fillMaxWidth(),
+              ) {
+                Column(
+                  modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                  verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                  Text(
+                    text = "Tile Size",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                  )
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                  ) {
+                    HomeTileSize.entries.forEach { size ->
+                      SelectablePill(
+                        label = size.label,
+                        selected = HomeTileSize.fromId(settings.homeTileSize) == size,
+                        accent = accent,
+                        onClick = { onSetHomeTileSize(size.id) },
+                        modifier = Modifier.weight(1f),
+                      )
+                    }
+                  }
+                }
+              }
+
+              // Inline Accent Color Swatches (Live Preview!)
+              Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White.copy(alpha = 0.06f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                modifier = Modifier.fillMaxWidth(),
+              ) {
+                Column(
+                  modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                  verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                    Text(
+                      text = "Accent Color",
+                      style = MaterialTheme.typography.titleMedium,
+                      color = Color.White,
+                    )
+                    Text(
+                      text = LauncherPalettes.accentById(settings.accentId).name,
+                      style = MaterialTheme.typography.labelMedium,
+                      color = accent.primary,
+                    )
+                  }
+                  Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                  ) {
+                    LauncherPalettes.accents.take(6).forEach { preset ->
+                      val selected = settings.accentId == preset.id
+                      var dotFocused by remember { mutableStateOf(false) }
+                      Box(
+                        modifier = Modifier
+                          .weight(1f)
+                          .height(34.dp)
+                          .clip(RoundedCornerShape(10.dp))
+                          .background(preset.primary.copy(alpha = if (selected || dotFocused) 0.95f else 0.55f))
+                          .onFocusChanged { dotFocused = it.isFocused }
+                          .clickable { onSelectAccent(preset.id) },
+                        contentAlignment = Alignment.Center,
+                      ) {
+                        if (selected) {
+                          Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = preset.name,
+                            tint = preset.onPrimary,
+                            modifier = Modifier.size(16.dp),
+                          )
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              DrawerNavRow(
+                icon = Icons.Rounded.Movie,
+                title = "Wallpaper Source",
+                subtitle = categorySubtitle(SettingsCategory.JELLYFIN),
+                accent = accent,
+                onClick = { drilledCategory = SettingsCategory.JELLYFIN },
+              )
+
+              DrawerNavRow(
+                icon = Icons.Rounded.Home,
+                title = "Home Rows & App Folders",
+                subtitle = categorySubtitle(SettingsCategory.ROWS),
+                accent = accent,
+                onClick = { drilledCategory = SettingsCategory.ROWS },
+              )
+
+              DrawerNavRow(
+                icon = Icons.Rounded.Cloud,
+                title = "Weather & Forecast",
+                subtitle = categorySubtitle(SettingsCategory.WEATHER),
+                accent = accent,
+                onClick = { drilledCategory = SettingsCategory.WEATHER },
+              )
+
+              DrawerNavRow(
+                icon = Icons.Rounded.Devices,
+                title = "Phone / PC Web Companion",
+                subtitle = "Scan QR to drag-reorder, paste keys & upload photos",
+                accent = accent,
+                highlighted = true,
+                onClick = onStartWebCompanion,
+              )
+
+              DrawerNavRow(
+                icon = Icons.Rounded.Download,
+                title = "Updates & Backup",
+                subtitle = categorySubtitle(SettingsCategory.UPDATES),
+                accent = accent,
+                onClick = { drilledCategory = SettingsCategory.UPDATES },
+              )
+
+              DrawerNavRow(
+                icon = Icons.Rounded.Settings,
+                title = "Launcher, Backup & Setup Wizard",
+                subtitle = categorySubtitle(SettingsCategory.SYSTEM),
+                accent = accent,
+                onClick = { drilledCategory = SettingsCategory.SYSTEM },
+              )
+            } else if (currentCategory == null) {
+              // ══════════════════════════════════════════════════
+              // ADVANCED MODE — Clean Drill-Down Directory
+              // ══════════════════════════════════════════════════
+              SettingsCategory.entries.forEachIndexed { idx, category ->
+                DrawerNavRow(
+                  icon = category.icon,
+                  title = category.title,
+                  subtitle = categorySubtitle(category),
+                  accent = accent,
+                  onClick = { drilledCategory = category },
+                  modifier = if (idx == 0) Modifier.focusRequester(rootEntryRequester) else Modifier,
+                )
+              }
+            } else {
+              // ══════════════════════════════════════════════════
+              // DRILLED-IN CATEGORY PANE (Full Controls)
+              // ══════════════════════════════════════════════════
+              val activeTabRequester = backButtonRequester
+              when (currentCategory) {
                 SettingsCategory.ROWS -> {
                   SettingsHomePane(
                     settings = settings,
@@ -727,12 +930,131 @@ fun SettingsOverlay(
                   )
                 }
               }
-
-              Spacer(modifier = Modifier.height(10.dp))
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
           }
         }
       }
+    }
+  }
+}
+
+@Composable
+private fun DrawerModeChip(
+  label: String,
+  selected: Boolean,
+  accent: AccentPreset,
+  onClick: () -> Unit,
+) {
+  var isFocused by remember { mutableStateOf(false) }
+  val bg by animateColorAsState(
+    targetValue = when {
+      isFocused -> accent.primary
+      selected -> accent.primary.copy(alpha = 0.85f)
+      else -> Color.Transparent
+    },
+    label = "drawerModeChipBg",
+  )
+  val fg = if (isFocused || selected) accent.onPrimary else Color.White.copy(alpha = 0.78f)
+
+  Surface(
+    modifier = Modifier
+      .onFocusChanged { isFocused = it.isFocused }
+      .clickable(onClick = onClick),
+    shape = RoundedCornerShape(50),
+    color = bg,
+    border = if (isFocused) BorderStroke(1.5.dp, Color.White) else null,
+  ) {
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelMedium.copy(
+        fontWeight = if (selected || isFocused) FontWeight.Bold else FontWeight.Medium,
+      ),
+      color = fg,
+      modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+  }
+}
+
+@Composable
+private fun DrawerNavRow(
+  icon: ImageVector,
+  title: String,
+  subtitle: String,
+  accent: AccentPreset,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+  highlighted: Boolean = false,
+) {
+  var isFocused by remember { mutableStateOf(false) }
+  val bg by animateColorAsState(
+    targetValue = when {
+      isFocused -> Color.White.copy(alpha = 0.16f)
+      highlighted -> accent.primary.copy(alpha = 0.14f)
+      else -> Color.White.copy(alpha = 0.06f)
+    },
+    label = "drawerNavRowBg",
+  )
+
+  Surface(
+    modifier = modifier
+      .fillMaxWidth()
+      .onFocusChanged { isFocused = it.isFocused }
+      .clickable(onClick = onClick),
+    shape = RoundedCornerShape(14.dp),
+    color = bg,
+    border = when {
+      isFocused -> BorderStroke(2.dp, accent.primary)
+      highlighted -> BorderStroke(1.dp, accent.primary.copy(alpha = 0.45f))
+      else -> BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    },
+  ) {
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 14.dp, vertical = 12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Box(
+        modifier = Modifier
+          .size(34.dp)
+          .background(
+            if (isFocused || highlighted) accent.primary.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f),
+            RoundedCornerShape(10.dp),
+          ),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+          imageVector = icon,
+          contentDescription = null,
+          tint = if (isFocused || highlighted) accent.primary else Color.White.copy(alpha = 0.85f),
+          modifier = Modifier.size(18.dp),
+        )
+      }
+      Column(modifier = Modifier.weight(1f)) {
+        Text(
+          text = title,
+          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+          color = if (highlighted && !isFocused) accent.primary else Color.White,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+          text = subtitle,
+          style = MaterialTheme.typography.bodySmall,
+          color = Color.White.copy(alpha = 0.62f),
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+        )
+      }
+      Icon(
+        imageVector = Icons.Rounded.ChevronRight,
+        contentDescription = null,
+        tint = if (isFocused || highlighted) accent.primary else Color.White.copy(alpha = 0.45f),
+        modifier = Modifier.size(20.dp),
+      )
     }
   }
 }

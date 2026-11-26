@@ -41,10 +41,15 @@ Search across streaming services (filtered to your region, subscriptions & Prime
 
 ![Horizon TV Launcher Universal Search](docs/screenshots/search.png)
 
-### Customize Overlay
-TV-friendly two-pane settings overlay with clean sub-tabs for Home, Search, Wallpapers, Screensaver, Weather, Appearance, Parental Controls, Updates, and Backup/Restore.
+### Customize Drawer (Easy / Advanced + Live Preview)
+Translucent right-side settings drawer that keeps your real TV Home screen live and visible on the left — switch between **Easy Mode** (everyday essentials) and **Advanced Mode** (every power-user section) with a single pill.
 
-![Horizon TV Launcher Customize Overlay](docs/screenshots/customize.png)
+![Horizon TV Launcher Customize Drawer](docs/screenshots/customize.png)
+
+### 4-Step First-Run Setup Wizard
+Guided setup for dock style, clock format, wallpapers, search region, and favorite apps right out of the box.
+
+![Horizon TV Launcher Setup Wizard](docs/screenshots/wizard.png)
 
 ### Full-Screen Idle Screensaver & Android DreamService
 Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shift, and ClearLogos.
@@ -127,10 +132,10 @@ Horizon TV Launcher targets **Android 7.0+ (API 24)** up to **Android 16**, requ
 
 ## Installation
 
-1. Download the latest APK (`HorizonTVLauncher-v2.5.50.apk`, ~2.3 MB R8-optimized) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
+1. Download the latest APK (`HorizonTVLauncher-v2.5.51.apk`, ~2.3 MB R8-optimized) from the [Releases](https://github.com/darkside281/HorizonTVLauncher/releases) page.
 2. Sideload it onto your Android TV / Google TV device (via USB, file manager, or ADB):
    ```bash
-   adb install -r HorizonTVLauncher-v2.5.50.apk
+   adb install -r HorizonTVLauncher-v2.5.51.apk
    ```
 3. Open **Horizon TV Launcher** (follow the 4-step Setup Wizard, or open **Customize → Launcher & Apps → Set as Default Home**).
    - **Android TV (Nvidia Shield, Sony, etc.)** — optionally disable the stock launcher via ADB so the Home button always opens Horizon:
