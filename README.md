@@ -34,27 +34,27 @@ Every feature in Horizon TV Launcher is unlocked from day one with no subscripti
 ### Home Screen & Live Artwork
 Full-bleed widescreen wallpapers with ClearLogos, live weather, and customizable artwork-only, titled, or Minimalist Bottom-Dock app rows.
 
-![Horizon TV Launcher Home Screen](docs/screenshots/home.png?v=2551)
+![Horizon TV Launcher Home Screen](docs/screenshots/home-v2.png)
 
 ### Universal Search (Where to Watch + Jellyfin + Apps + Voice)
 Search across streaming services (filtered to your region, subscriptions & Prime Video Channels), your own Jellyfin server with vertical posters, and installed apps — with full Title Details popups and direct **Overview / Details** deep-links.
 
-![Horizon TV Launcher Universal Search](docs/screenshots/search.png?v=2551)
+![Horizon TV Launcher Universal Search](docs/screenshots/search-v2.png)
 
 ### Customize Drawer (Easy / Advanced + Live Preview)
 Translucent right-side settings drawer that keeps your real TV Home screen live and visible on the left — switch between **Easy Mode** (everyday essentials) and **Advanced Mode** (every power-user section) with a single pill.
 
-![Horizon TV Launcher Customize Drawer](docs/screenshots/customize.png?v=2551)
+![Horizon TV Launcher Customize Drawer](docs/screenshots/customize-v2.png)
 
 ### 4-Step First-Run Setup Wizard
 Guided setup for dock style, clock format, wallpapers, search region, and favorite apps right out of the box.
 
-![Horizon TV Launcher Setup Wizard](docs/screenshots/wizard.png?v=2551)
+![Horizon TV Launcher Setup Wizard](docs/screenshots/wizard.png)
 
 ### Full-Screen Idle Screensaver & Android DreamService
 Ken Burns widescreen artwork slideshow with optional clock, weather, burn-in shift, and ClearLogos.
 
-![Horizon TV Launcher Screensaver](docs/screenshots/screensaver.png?v=2551)
+![Horizon TV Launcher Screensaver](docs/screenshots/screensaver-v2.png)
 
 ---
 
