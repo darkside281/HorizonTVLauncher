@@ -82,6 +82,9 @@ class LocalWebCompanionServer(
   private var serverSocket: ServerSocket? = null
   private var acceptJob: Job? = null
   private val running = AtomicBoolean(false)
+  private val authLock = Any()
+  private var failedPinAttempts = 0
+  private var lockoutUntilMillis = 0L
 
   var sessionCode: String = ""
     private set
@@ -97,6 +100,10 @@ class LocalWebCompanionServer(
     val port = socket.localPort
     val ip = findLocalIpv4Address() ?: "127.0.0.1"
     val code = (1000..9999).random().toString()
+    synchronized(authLock) {
+      failedPinAttempts = 0
+      lockoutUntilMillis = 0L
+    }
 
     serverSocket = socket
     sessionCode = code
@@ -166,7 +173,29 @@ class LocalWebCompanionServer(
 
       if (path.startsWith("/api/")) {
         val suppliedCode = queryParams["code"].orEmpty().trim()
-        if (suppliedCode != sessionCode) {
+        val now = System.currentTimeMillis()
+        var lockedRemainingSec = 0L
+        var authOk = false
+        synchronized(authLock) {
+          if (now < lockoutUntilMillis) {
+            lockedRemainingSec = ((lockoutUntilMillis - now + 999L) / 1000L).coerceAtLeast(1L)
+          } else if (suppliedCode == sessionCode) {
+            failedPinAttempts = 0
+            authOk = true
+          } else {
+            failedPinAttempts++
+            if (failedPinAttempts >= 5) {
+              failedPinAttempts = 0
+              lockoutUntilMillis = now + 30_000L
+              lockedRemainingSec = 30L
+            }
+          }
+        }
+        if (lockedRemainingSec > 0L) {
+          writeJson(output, 429, JSONObject().put("error", "Too many failed attempts. Try again in ${lockedRemainingSec}s."))
+          return
+        }
+        if (!authOk) {
           writeJson(output, 401, JSONObject().put("error", "Invalid session code"))
           return
         }
