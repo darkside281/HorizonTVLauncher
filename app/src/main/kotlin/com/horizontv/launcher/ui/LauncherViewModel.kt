@@ -1093,6 +1093,28 @@ class LauncherViewModel(
     val client = dataSourceFor(provider)
 
     slideshowJob = viewModelScope.launch {
+      // Instant cold-start wallpaper: paint last cached backdrop from disk immediately while network fetches fresh list
+      if (_uiState.value.jellyfinSlide == null) {
+        val cachedImg = appDataSource.loadLastWallpaperCache()
+        if (cachedImg != null && _uiState.value.jellyfinSlide == null) {
+          _uiState.update {
+            it.copy(
+              jellyfinSlide = JellyfinSlide(
+                backdrop = JellyfinBackdrop(
+                  itemId = "cached",
+                  title = "",
+                  year = null,
+                  imageUrl = "",
+                  logoUrl = null,
+                ),
+                image = cachedImg,
+                logoImage = null,
+              ),
+            )
+          }
+        }
+      }
+
       var retrySeconds = 5L
       while (isActive && (_uiState.value.settings.jellyfinEnabled || _uiState.value.isScreensaverActive) && (fetchFreshList || cachedBackdrops.isEmpty())) {
         val current = _uiState.value.settings
@@ -1168,6 +1190,7 @@ class LauncherViewModel(
               jellyfinBackdropCount = cachedBackdrops.size,
             )
           }
+          launch { appDataSource.saveLastWallpaperCache(img) }
           val waitSec = if (_uiState.value.isScreensaverActive) {
             _uiState.value.settings.screensaverIntervalSeconds.coerceIn(5, 300)
           } else {
@@ -1944,6 +1967,11 @@ class LauncherViewModel(
 
   fun toggle24HourClock() {
     updateSettings { it.copy(use24HourClock = !it.use24HourClock) }
+  }
+
+  fun setSettingsAdvancedMode(enabled: Boolean) {
+    if (_uiState.value.settings.settingsAdvancedMode == enabled) return
+    updateSettings { it.copy(settingsAdvancedMode = enabled) }
   }
 
   private var continueWatchingJob: Job? = null

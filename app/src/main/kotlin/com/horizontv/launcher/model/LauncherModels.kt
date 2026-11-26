@@ -697,6 +697,7 @@ data class LauncherSettings(
   val showSearchBar: Boolean = true,
   val showAllAppsSection: Boolean = true,
   val showContinueWatchingRow: Boolean = false,
+  val settingsAdvancedMode: Boolean = false,
   val showAddAppTile: Boolean = true,
   val showTileTitles: Boolean = true,
   val showTvInputsButton: Boolean = true,

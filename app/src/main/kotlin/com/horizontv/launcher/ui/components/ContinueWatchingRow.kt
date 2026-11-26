@@ -49,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -161,14 +162,14 @@ private fun ContinueWatchingCard(
   val cardHeightDp = tileSize.heightDp
   val cardWidthDp = (cardHeightDp * 16 / 9).coerceAtLeast(tileSize.widthDp)
 
-  val scale by animateFloatAsState(
+  val scaleState = animateFloatAsState(
     targetValue = if (isFocused) 1.07f else 1f,
-    animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f),
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "cwScale",
   )
-  val lift by animateDpAsState(
-    targetValue = if (isFocused) (-7).dp else 0.dp,
-    animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
+  val liftDpState = animateFloatAsState(
+    targetValue = if (isFocused) -7f else 0f,
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "cwLift",
   )
   val borderColor by animateColorAsState(
@@ -179,7 +180,7 @@ private fun ContinueWatchingCard(
     },
     label = "cwBorder",
   )
-  val alpha by animateFloatAsState(
+  val alphaState = animateFloatAsState(
     targetValue = if (isFocused) 1f else tileOpacity.coerceIn(0.35f, 1f),
     label = "cwAlpha",
   )
@@ -187,8 +188,10 @@ private fun ContinueWatchingCard(
   Column(
     modifier = Modifier
       .width(cardWidthDp.dp)
-      .offset(y = lift)
-      .alpha(alpha)
+      .graphicsLayer {
+        translationY = liftDpState.value * density
+        alpha = alphaState.value
+      }
       .zIndex(if (isFocused) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -196,7 +199,11 @@ private fun ContinueWatchingCard(
       modifier = Modifier
         .fillMaxWidth()
         .height(cardHeightDp.dp)
-        .scale(scale)
+        .graphicsLayer {
+          val s = scaleState.value
+          scaleX = s
+          scaleY = s
+        }
         .drawBehind {
           if (isFocused && focusStyle == TileFocusStyle.GLOW) {
             val baseRadius = cornerRadius.toPx()

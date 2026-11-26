@@ -55,7 +55,7 @@ fun AmbientBackground(
   }
 
   val hasImageBackdrop = jellyfinSlide != null || customBitmap != null
-  val kenBurnsPhase = if (kenBurnsEnabled && hasImageBackdrop) {
+  val kenBurnsPhaseState = if (kenBurnsEnabled && hasImageBackdrop) {
     val infiniteTransition = rememberInfiniteTransition(label = "homeWallpaperMotion")
     infiniteTransition.animateFloat(
       initialValue = 0f,
@@ -65,18 +65,19 @@ fun AmbientBackground(
         repeatMode = RepeatMode.Reverse,
       ),
       label = "homeKenBurnsPhase",
-    ).value
+    )
   } else {
-    0f
+    null
   }
 
-  val motionModifier = if (kenBurnsEnabled && hasImageBackdrop) {
+  val motionModifier = if (kenBurnsPhaseState != null) {
     Modifier.graphicsLayer {
-      val scale = 1.04f + (kenBurnsPhase * 0.10f)
+      val phase = kenBurnsPhaseState.value
+      val scale = 1.04f + (phase * 0.10f)
       scaleX = scale
       scaleY = scale
-      translationX = (kenBurnsPhase - 0.5f) * size.width * 0.045f
-      translationY = (0.5f - kenBurnsPhase) * size.height * 0.032f
+      translationX = (phase - 0.5f) * size.width * 0.045f
+      translationY = (0.5f - phase) * size.height * 0.032f
     }
   } else {
     Modifier

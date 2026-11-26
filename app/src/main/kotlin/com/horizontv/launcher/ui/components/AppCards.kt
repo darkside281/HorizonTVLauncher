@@ -59,6 +59,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -136,18 +137,18 @@ fun FavoriteBannerCard(
     }
     else -> 1f
   }
-  val scale by animateFloatAsState(
+  val scaleState = animateFloatAsState(
     targetValue = targetScale,
-    animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f),
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "favScale",
   )
-  val liftOffset by animateDpAsState(
+  val liftDpState = animateFloatAsState(
     targetValue = if (activeFocus) {
-      if (focusStyle == TileFocusStyle.SHADOW) (-9).dp else (-7).dp
+      if (focusStyle == TileFocusStyle.SHADOW) -9f else -7f
     } else {
-      0.dp
+      0f
     },
-    animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "favLift",
   )
   val borderWidth by animateDpAsState(
@@ -176,7 +177,7 @@ fun FavoriteBannerCard(
     },
     label = "favBorderColor",
   )
-  val cardAlpha by animateFloatAsState(
+  val cardAlphaState = animateFloatAsState(
     targetValue = if (activeFocus) 1f else tileOpacity.coerceIn(0.35f, 1f),
     label = "favAlpha",
   )
@@ -184,8 +185,10 @@ fun FavoriteBannerCard(
   Column(
     modifier = modifier
       .width(cardWidthDp.dp)
-      .offset(y = liftOffset)
-      .alpha(cardAlpha)
+      .graphicsLayer {
+        translationY = liftDpState.value * density
+        alpha = cardAlphaState.value
+      }
       .zIndex(if (activeFocus) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -193,7 +196,11 @@ fun FavoriteBannerCard(
       modifier = Modifier
         .fillMaxWidth()
         .height(cardHeightDp.dp)
-        .scale(scale)
+        .graphicsLayer {
+          val s = scaleState.value
+          scaleX = s
+          scaleY = s
+        }
         .drawBehind {
           if (activeFocus && focusStyle == TileFocusStyle.GLOW) {
             val baseRadius = cornerRadius.toPx()
@@ -432,14 +439,14 @@ fun AppGridTile(
     onDispose { selectKeyController.reset() }
   }
 
-  val scale by animateFloatAsState(
+  val scaleState = animateFloatAsState(
     targetValue = if (isFocused) 1.07f else 1f,
-    animationSpec = spring(dampingRatio = 0.78f, stiffness = 430f),
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "tileScale",
   )
-  val liftOffset by animateDpAsState(
-    targetValue = if (isFocused) (-5).dp else 0.dp,
-    animationSpec = spring(dampingRatio = 0.8f, stiffness = 430f),
+  val liftDpState = animateFloatAsState(
+    targetValue = if (isFocused) -5f else 0f,
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "tileLift",
   )
   val borderWidth by animateDpAsState(
@@ -450,15 +457,17 @@ fun AppGridTile(
     targetValue = if (isFocused) Color.White else Color.White.copy(alpha = 0.14f),
     label = "tileBorderColor",
   )
-  val cardAlpha by animateFloatAsState(
+  val cardAlphaState = animateFloatAsState(
     targetValue = if (isFocused) 1f else tileOpacity.coerceIn(0.35f, 1f),
     label = "tileAlpha",
   )
 
   Column(
     modifier = modifier
-      .offset(y = liftOffset)
-      .alpha(cardAlpha)
+      .graphicsLayer {
+        translationY = liftDpState.value * density
+        alpha = cardAlphaState.value
+      }
       .zIndex(if (isFocused) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -466,7 +475,11 @@ fun AppGridTile(
       modifier = Modifier
         .fillMaxWidth()
         .height(112.dp)
-        .scale(scale)
+        .graphicsLayer {
+          val s = scaleState.value
+          scaleX = s
+          scaleY = s
+        }
         .shadow(
           elevation = if (isFocused) 20.dp else 4.dp,
           shape = RoundedCornerShape(16.dp),
@@ -613,14 +626,14 @@ fun AddFavoriteTile(
   val cornerRadius = cornerStyle.radiusDp.dp
   val cardShape = RoundedCornerShape(cornerRadius)
 
-  val scale by animateFloatAsState(
+  val scaleState = animateFloatAsState(
     targetValue = if (isFocused) 1.08f else 1f,
-    animationSpec = spring(dampingRatio = 0.76f, stiffness = 420f),
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "addTileScale",
   )
-  val liftOffset by animateDpAsState(
-    targetValue = if (isFocused) (-7).dp else 0.dp,
-    animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
+  val liftDpState = animateFloatAsState(
+    targetValue = if (isFocused) -7f else 0f,
+    animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
     label = "addTileLift",
   )
   val borderColor by animateColorAsState(
@@ -631,7 +644,7 @@ fun AddFavoriteTile(
     },
     label = "addTileBorder",
   )
-  val cardAlpha by animateFloatAsState(
+  val cardAlphaState = animateFloatAsState(
     targetValue = if (isFocused) 1f else tileOpacity.coerceIn(0.35f, 1f),
     label = "addTileAlpha",
   )
@@ -639,8 +652,10 @@ fun AddFavoriteTile(
   Column(
     modifier = modifier
       .width(addWidthDp.dp)
-      .offset(y = liftOffset)
-      .alpha(cardAlpha)
+      .graphicsLayer {
+        translationY = liftDpState.value * density
+        alpha = cardAlphaState.value
+      }
       .zIndex(if (isFocused) 2f else 0f),
     horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -648,7 +663,11 @@ fun AddFavoriteTile(
       modifier = Modifier
         .fillMaxWidth()
         .height(shapeH.dp)
-        .scale(scale)
+        .graphicsLayer {
+          val s = scaleState.value
+          scaleX = s
+          scaleY = s
+        }
         .drawBehind {
           if (isFocused && focusStyle == TileFocusStyle.GLOW) {
             val baseRadius = cornerRadius.toPx()

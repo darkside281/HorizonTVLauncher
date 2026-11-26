@@ -199,6 +199,7 @@ fun SettingsOverlay(
   onToggleJustWatchShowAgeRating: () -> Unit = {},
   onToggleShowAllAppsSection: () -> Unit,
   onToggleShowContinueWatchingRow: () -> Unit = {},
+  onSetSettingsAdvancedMode: (Boolean) -> Unit = {},
   onToggleShowAddAppTile: () -> Unit,
   onToggleShowTileTitles: () -> Unit,
   onToggleShowTvInputsButton: () -> Unit = {},
@@ -260,7 +261,7 @@ fun SettingsOverlay(
   onSetUpdateCheckSchedule: (UpdateCheckSchedule) -> Unit = {},
   onOpenUpdateDialog: () -> Unit = {},
 ) {
-  var isAdvancedMode by remember { mutableStateOf(false) }
+  val isAdvancedMode = settings.settingsAdvancedMode
   var drilledCategory by remember { mutableStateOf<SettingsCategory?>(null) }
   var activeHomeSection by remember { mutableStateOf(0) } // 0 = Rows & Tiles, 1 = Clock & All Apps
   var activeSearchSection by remember { mutableStateOf(0) } // 0 = General, 1 = Region & Ratings, 2 = My Services, 3 = Apps
@@ -426,13 +427,13 @@ fun SettingsOverlay(
                       label = "Easy",
                       selected = !isAdvancedMode,
                       accent = accent,
-                      onClick = { isAdvancedMode = false },
+                      onClick = { onSetSettingsAdvancedMode(false) },
                     )
                     DrawerModeChip(
                       label = "Advanced",
                       selected = isAdvancedMode,
                       accent = accent,
-                      onClick = { isAdvancedMode = true },
+                      onClick = { onSetSettingsAdvancedMode(true) },
                     )
                   }
                 }
@@ -1098,6 +1099,7 @@ private fun SettingsHomePane(
   onToggleShowDate: () -> Unit,
   onToggleShowAllAppsSection: () -> Unit,
   onToggleShowContinueWatchingRow: () -> Unit = {},
+  onSetSettingsAdvancedMode: (Boolean) -> Unit = {},
   onSetGridColumns: (Int) -> Unit,
 ) {
   val homeTabs = listOf(

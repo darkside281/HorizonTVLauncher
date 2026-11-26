@@ -25,6 +25,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.horizontv.launcher.model.AppInfo
 import com.horizontv.launcher.model.ExternalSearchProvider
@@ -34,7 +36,10 @@ import com.horizontv.launcher.model.TvInputSource
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
@@ -65,6 +70,8 @@ interface InstalledAppsDataSource {
   fun openStreamingOffer(offer: StreamingOffer): Boolean
   fun loadTvInputs(): List<TvInputSource> = emptyList()
   fun openTvInput(input: TvInputSource): Boolean = false
+  suspend fun loadLastWallpaperCache(): ImageBitmap? = null
+  suspend fun saveLastWallpaperCache(image: ImageBitmap) {}
 }
 
 class AppRepository(private val context: Context) : InstalledAppsDataSource {
@@ -98,75 +105,104 @@ class AppRepository(private val context: Context) : InstalledAppsDataSource {
       }
     }
 
-    merged.values.mapNotNull { (resolveInfo, isTvApp) ->
-      val activityInfo = resolveInfo.activityInfo ?: return@mapNotNull null
-      val packageName = activityInfo.packageName
-      val activityName = activityInfo.name
-      val originalLabel = resolveInfo.loadLabel(pm).toString().trim()
-        .ifEmpty { packageName }
+    val entries = merged.values.toList()
+    val workerCount = Runtime.getRuntime().availableProcessors().coerceIn(2, 6)
+    val chunkSize = ((entries.size + workerCount - 1) / workerCount).coerceAtLeast(1)
 
-      val appFlags = activityInfo.applicationInfo?.flags ?: 0
-      val isSystemApp = (appFlags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
-        (appFlags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
+    coroutineScope {
+      entries.chunked(chunkSize).map { chunk ->
+        async(Dispatchers.IO) {
+          chunk.mapNotNull { (resolveInfo, isTvApp) ->
+            val activityInfo = resolveInfo.activityInfo ?: return@mapNotNull null
+            val packageName = activityInfo.packageName
+            val activityName = activityInfo.name
+            val originalLabel = resolveInfo.loadLabel(pm).toString().trim()
+              .ifEmpty { packageName }
 
-      val customPath = customIconPaths[packageName]
-      val customBitmap = if (!customPath.isNullOrBlank()) {
-        runCatching {
-          val file = File(customPath)
-          if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
-        }.getOrNull()
-      } else {
-        null
-      }
+            val appFlags = activityInfo.applicationInfo?.flags ?: 0
+            val isSystemApp = (appFlags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
+              (appFlags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
 
-      val iconBitmap: Bitmap?
-      val bannerBitmap: Bitmap?
-      val hasCustomIcon: Boolean
+            val customPath = customIconPaths[packageName]
+            val customBitmap = if (!customPath.isNullOrBlank()) {
+              runCatching {
+                val file = File(customPath)
+                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+              }.getOrNull()
+            } else {
+              null
+            }
 
-      if (customBitmap != null) {
-        hasCustomIcon = true
-        val aspect = customBitmap.width.toFloat() / customBitmap.height.coerceAtLeast(1)
-        if (aspect >= 1.35f) {
-          // Wide custom banner artwork fills the 16:9 card edge-to-edge
-          bannerBitmap = customBitmap
-          iconBitmap = customBitmap
-        } else {
-          // Square/portrait custom logo renders crisply centered on the tinted glass card
-          bannerBitmap = null
-          iconBitmap = customBitmap
+            val iconBitmap: Bitmap?
+            val bannerBitmap: Bitmap?
+            val hasCustomIcon: Boolean
+
+            if (customBitmap != null) {
+              hasCustomIcon = true
+              val aspect = customBitmap.width.toFloat() / customBitmap.height.coerceAtLeast(1)
+              if (aspect >= 1.35f) {
+                bannerBitmap = customBitmap
+                iconBitmap = customBitmap
+              } else {
+                bannerBitmap = null
+                iconBitmap = customBitmap
+              }
+            } else {
+              hasCustomIcon = false
+              iconBitmap = runCatching {
+                resolveInfo.loadIcon(pm)?.toBoundedBitmap(128, 128)
+              }.getOrNull()
+
+              val bannerDrawable = runCatching {
+                activityInfo.loadBanner(pm)
+                  ?: activityInfo.applicationInfo?.loadBanner(pm)
+                  ?: pm.getApplicationBanner(packageName)
+              }.getOrNull()
+
+              bannerBitmap = runCatching {
+                bannerDrawable?.toBoundedBitmap(320, 180)
+              }.getOrNull()
+            }
+
+            val tintColor = iconBitmap?.extractAccentColor() ?: Color(0xFF334155)
+
+            AppInfo(
+              packageName = packageName,
+              activityName = activityName,
+              label = originalLabel,
+              originalLabel = originalLabel,
+              isTvApp = isTvApp,
+              isSystemApp = isSystemApp,
+              icon = iconBitmap?.asImageBitmap(),
+              banner = bannerBitmap?.asImageBitmap(),
+              tintColor = tintColor,
+              hasCustomIcon = hasCustomIcon,
+            )
+          }
         }
-      } else {
-        hasCustomIcon = false
-        iconBitmap = runCatching {
-          resolveInfo.loadIcon(pm)?.toBoundedBitmap(128, 128)
-        }.getOrNull()
-
-        val bannerDrawable = runCatching {
-          activityInfo.loadBanner(pm)
-            ?: activityInfo.applicationInfo?.loadBanner(pm)
-            ?: pm.getApplicationBanner(packageName)
-        }.getOrNull()
-
-        bannerBitmap = runCatching {
-          bannerDrawable?.toBoundedBitmap(320, 180)
-        }.getOrNull()
-      }
-
-      val tintColor = iconBitmap?.extractAccentColor() ?: Color(0xFF334155)
-
-      AppInfo(
-        packageName = packageName,
-        activityName = activityName,
-        label = originalLabel,
-        originalLabel = originalLabel,
-        isTvApp = isTvApp,
-        isSystemApp = isSystemApp,
-        icon = iconBitmap?.asImageBitmap(),
-        banner = bannerBitmap?.asImageBitmap(),
-        tintColor = tintColor,
-        hasCustomIcon = hasCustomIcon,
-      )
+      }.awaitAll().flatten()
     }.sortedBy { it.label.lowercase() }
+  }
+
+  override suspend fun loadLastWallpaperCache(): ImageBitmap? = withContext(Dispatchers.IO) {
+    runCatching {
+      val file = File(context.cacheDir, "last_wallpaper_backdrop.jpg")
+      if (!file.exists() || file.length() <= 0L) return@runCatching null
+      BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap()
+    }.getOrNull()
+  }
+
+  override suspend fun saveLastWallpaperCache(image: ImageBitmap) = withContext(Dispatchers.IO) {
+    runCatching {
+      val tmp = File(context.cacheDir, "last_wallpaper_backdrop.tmp")
+      val dst = File(context.cacheDir, "last_wallpaper_backdrop.jpg")
+      FileOutputStream(tmp).use { out ->
+        image.asAndroidBitmap().compress(Bitmap.CompressFormat.JPEG, 86, out)
+      }
+      if (dst.exists()) dst.delete()
+      tmp.renameTo(dst)
+    }
+    Unit
   }
 
   override suspend fun saveCustomIcon(

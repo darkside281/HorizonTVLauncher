@@ -413,6 +413,7 @@ class MainActivity : ComponentActivity() {
           onToggleJustWatchShowAgeRating = cb.onToggleJustWatchShowAgeRating,
           onToggleShowAllAppsSection = cb.onToggleShowAllAppsSection,
           onToggleShowContinueWatchingRow = cb.onToggleShowContinueWatchingRow,
+          onSetSettingsAdvancedMode = cb.onSetSettingsAdvancedMode,
           onOpenContinueWatchingItem = cb.onOpenContinueWatchingItem,
           onToggleShowAddAppTile = cb.onToggleShowAddAppTile,
           onToggleShowTileTitles = cb.onToggleShowTileTitles,
@@ -625,6 +626,7 @@ class MainActivity : ComponentActivity() {
     val onToggleJustWatchShowAgeRating = vm::toggleJustWatchShowAgeRating
     val onToggleShowAllAppsSection = vm::toggleShowAllAppsSection
     val onToggleShowContinueWatchingRow = vm::toggleShowContinueWatchingRow
+    val onSetSettingsAdvancedMode = vm::setSettingsAdvancedMode
     val onOpenContinueWatchingItem = vm::openContinueWatchingItem
     val onToggleShowAddAppTile = vm::toggleShowAddAppTile
     val onToggleShowTileTitles = vm::toggleShowTileTitles
