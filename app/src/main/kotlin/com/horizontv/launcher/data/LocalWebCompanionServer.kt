@@ -1049,7 +1049,7 @@ class LocalWebCompanionServer(
           <div>
             <label>Tile Size</label>
             <select id="optTileSize" onchange="saveHomeOpts()">
-              <option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option>
+              <option value="xsmall">Extra Small (XS)</option><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option>
             </select>
           </div>
           <div>

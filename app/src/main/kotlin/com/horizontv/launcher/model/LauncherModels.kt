@@ -104,11 +104,13 @@ enum class TileAspectShape(val id: String, val label: String, val shortLabel: St
   fun dimensionsFor(tileSize: HomeTileSize): Triple<Int, Int, Int> = when (this) {
     BANNER_16_9 -> Triple(tileSize.widthDp, tileSize.heightDp, tileSize.iconSizeDp)
     SQUARE_1_1 -> when (tileSize) {
+      HomeTileSize.EXTRA_SMALL -> Triple(88, 88, 44)
       HomeTileSize.SMALL -> Triple(112, 112, 56)
       HomeTileSize.MEDIUM -> Triple(132, 132, 68)
       HomeTileSize.LARGE -> Triple(156, 156, 80)
     }
     POSTER_2_3 -> when (tileSize) {
+      HomeTileSize.EXTRA_SMALL -> Triple(84, 122, 42)
       HomeTileSize.SMALL -> Triple(102, 148, 52)
       HomeTileSize.MEDIUM -> Triple(118, 172, 64)
       HomeTileSize.LARGE -> Triple(136, 198, 74)
@@ -547,6 +549,14 @@ enum class HomeTileSize(
   val addTileWidthDp: Int,
   val iconSizeDp: Int,
 ) {
+  EXTRA_SMALL(
+    id = "xsmall",
+    label = "XS",
+    widthDp = 134,
+    heightDp = 76,
+    addTileWidthDp = 108,
+    iconSizeDp = 38,
+  ),
   SMALL(
     id = "small",
     label = "Small",

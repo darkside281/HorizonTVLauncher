@@ -1237,7 +1237,7 @@ private fun SettingsHomePane(
       ) {
         HomeTileSize.entries.forEachIndexed { idx, tileSize ->
           SelectablePill(
-            label = "${tileSize.label} Tiles",
+            label = tileSize.label,
             selected = HomeTileSize.fromId(settings.homeTileSize) == tileSize,
             accent = accent,
             onClick = { onSetHomeTileSize(tileSize.id) },
