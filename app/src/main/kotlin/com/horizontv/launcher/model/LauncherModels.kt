@@ -919,6 +919,8 @@ data class LauncherSettings(
       "MinimalWallpaper",
       "ImaginaryLandscapes",
       "WidescreenWallpaper",
+      "christmas",
+      "WinterPorn",
     )
 
     fun friendlyRedditLabel(subreddit: String): String {
@@ -936,6 +938,8 @@ data class LauncherSettings(
         "minimalwallpaper" -> "Minimalist"
         "imaginarylandscapes" -> "Sci-Fi & Fantasy"
         "widescreenwallpaper" -> "Widescreen"
+        "christmas" -> "Christmas"
+        "winterporn" -> "Winter & Snow"
         "mostbeautiful" -> "Scenic Places"
         "itookapicture" -> "Photography"
         else -> {

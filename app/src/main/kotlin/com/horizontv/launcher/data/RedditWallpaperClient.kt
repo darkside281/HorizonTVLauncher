@@ -185,17 +185,29 @@ class RedditWallpaperClient : JellyfinDataSource {
     subreddit: String,
     sort: RedditSort,
   ): List<JellyfinBackdrop> {
+    val combined = LinkedHashMap<String, JellyfinBackdrop>()
+
     // 1. Primary: Arctic Shift public Reddit posts API (reliable HTTP 200 even when reddit.com returns 403)
     val arcticResult = runCatching { fetchFromArcticShift(subreddit, sort) }
-    arcticResult.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+    arcticResult.getOrNull()?.forEach { combined.putIfAbsent(it.itemId, it) }
 
-    // 2. Fallback 1: Direct Reddit JSON (works on networks not blocked by Reddit)
-    val directResult = runCatching { fetchFromDirectReddit(subreddit, sort) }
-    directResult.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+    // 2. Fallback 1: Direct Reddit JSON (if Arctic Shift returned fewer than 12 usable landscape wallpapers)
+    val directResult = if (combined.size < 12) {
+      runCatching { fetchFromDirectReddit(subreddit, sort) }.also { res ->
+        res.getOrNull()?.forEach { combined.putIfAbsent(it.itemId, it) }
+      }
+    } else {
+      Result.success(emptyList())
+    }
 
-    // 3. Fallback 2: Wallhaven 16:9 1080p+ widescreen wallpapers matching the subreddit's topic
-    val wallhavenResult = runCatching { fetchFromWallhavenFallback(subreddit) }
-    wallhavenResult.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
+    // 3. Fallback 2: Top up with Wallhaven 16:9 1080p+ widescreen wallpapers if Reddit returned too few
+    if (combined.size < 12) {
+      runCatching { fetchFromWallhavenFallback(subreddit) }
+        .getOrNull()
+        ?.forEach { combined.putIfAbsent(it.itemId, it) }
+    }
+
+    if (combined.isNotEmpty()) return combined.values.toList().shuffled()
 
     throw (arcticResult.exceptionOrNull()
       ?: directResult.exceptionOrNull()
@@ -213,7 +225,7 @@ class RedditWallpaperClient : JellyfinDataSource {
       RedditSort.TOP_MONTH -> "&after=30d"
       RedditSort.TOP_ALL -> "&after=365d"
     }
-    val url = "https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=$encodedSub&limit=45&sort=desc$afterParam"
+    val url = "https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=$encodedSub&limit=100&sort=desc$afterParam"
     val conn = openConnection(url)
     try {
       val code = conn.responseCode
@@ -260,36 +272,55 @@ class RedditWallpaperClient : JellyfinDataSource {
       val data = if (isWrappedChildren) obj.optJSONObject("data") ?: continue else obj
       if (data.optBoolean("over_18", false)) continue
       if (data.optBoolean("is_video", false)) continue
-      if (data.optBoolean("is_gallery", false)) continue
       if (data.optBoolean("stickied", false)) continue
 
       val id = data.optString("id", "").trim()
       if (id.isEmpty()) continue
 
-      val previewSource = data.optJSONObject("preview")
-        ?.optJSONArray("images")
-        ?.optJSONObject(0)
-        ?.optJSONObject("source")
-      val width = previewSource?.optInt("width", 0) ?: 0
-      val height = previewSource?.optInt("height", 0) ?: 0
+      var imageUrl = ""
+      if (data.optBoolean("is_gallery", false)) {
+        // Extract first landscape high-res image from Reddit gallery media_metadata
+        val meta = data.optJSONObject("media_metadata")
+        if (meta != null) {
+          val keys = meta.keys()
+          while (keys.hasNext()) {
+            val entry = meta.optJSONObject(keys.next()) ?: continue
+            val s = entry.optJSONObject("s") ?: continue
+            val w = s.optInt("x", 0)
+            val h = s.optInt("y", 0)
+            val u = s.optString("u", "").replace("&amp;", "&").trim()
+            if (w >= 1000 && w > h && u.startsWith("https://")) {
+              imageUrl = u
+              break
+            }
+          }
+        }
+      } else {
+        val previewSource = data.optJSONObject("preview")
+          ?.optJSONArray("images")
+          ?.optJSONObject(0)
+          ?.optJSONObject("source")
+        val width = previewSource?.optInt("width", 0) ?: 0
+        val height = previewSource?.optInt("height", 0) ?: 0
 
-      // Keep landscape/widescreen TV-friendly images only
-      if (width > 0 && height > 0) {
-        if (width < 1000 || width < height) continue
-      }
+        // Keep landscape/widescreen TV-friendly images only
+        if (width > 0 && height > 0) {
+          if (width < 1000 || width < height) continue
+        }
 
-      val directUrl = data.optString("url_overridden_by_dest", data.optString("url", "")).trim()
-      val isDirectImage = directUrl.startsWith("https://") && (
-        directUrl.endsWith(".jpg", ignoreCase = true) ||
-          directUrl.endsWith(".jpeg", ignoreCase = true) ||
-          directUrl.endsWith(".png", ignoreCase = true) ||
-          directUrl.endsWith(".webp", ignoreCase = true)
-        )
-      val previewUrl = previewSource?.optString("url", "")?.replace("&amp;", "&")?.trim().orEmpty()
-      val imageUrl = when {
-        isDirectImage -> directUrl
-        previewUrl.startsWith("https://") -> previewUrl
-        else -> ""
+        val directUrl = data.optString("url_overridden_by_dest", data.optString("url", "")).trim()
+        val isDirectImage = directUrl.startsWith("https://") && (
+          directUrl.endsWith(".jpg", ignoreCase = true) ||
+            directUrl.endsWith(".jpeg", ignoreCase = true) ||
+            directUrl.endsWith(".png", ignoreCase = true) ||
+            directUrl.endsWith(".webp", ignoreCase = true)
+          )
+        val previewUrl = previewSource?.optString("url", "")?.replace("&amp;", "&")?.trim().orEmpty()
+        imageUrl = when {
+          isDirectImage -> directUrl
+          previewUrl.startsWith("https://") -> previewUrl
+          else -> ""
+        }
       }
       if (imageUrl.isEmpty()) continue
 
@@ -323,10 +354,13 @@ class RedditWallpaperClient : JellyfinDataSource {
       "minimalwallpaper" -> "minimalist"
       "imaginarylandscapes" -> "fantasy landscape"
       "wallpapers", "wallpaper", "widescreenwallpaper" -> "scenery"
+      "christmas" -> "christmas tree snow lights"
+      "winterporn" -> "winter snow mountains"
       else -> subreddit
     }
     val encoded = URLEncoder.encode(topic, "UTF-8")
-    val url = "https://wallhaven.cc/api/v1/search?q=$encoded&atleast=1920x1080&ratios=16x9&purity=100&sorting=toplist"
+    val seed = (100000..999999).random()
+    val url = "https://wallhaven.cc/api/v1/search?q=$encoded&atleast=1920x1080&ratios=16x9&purity=100&sorting=random&seed=$seed"
     val conn = openConnection(url)
     try {
       if (conn.responseCode !in 200..299) return emptyList()

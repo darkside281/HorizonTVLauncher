@@ -126,7 +126,7 @@ class LauncherViewModel(
     observePackageChanges()
     observeNetworkRecovery()
     if (_uiState.value.settings.jellyfinEnabled && _uiState.value.settings.isActiveWallpaperProviderConfigured) {
-      startJellyfinSlideshow(fetchFreshList = true)
+      startJellyfinSlideshow(fetchFreshList = true, useDiskCache = true)
     }
     if (_uiState.value.settings.weatherEnabled && _uiState.value.settings.isWeatherConfigured) {
       startWeatherRefreshLoop()
@@ -159,7 +159,8 @@ class LauncherViewModel(
         if (s.weatherEnabled && s.isWeatherConfigured && state.weatherData == null && weatherJob?.isActive != true) {
           startWeatherRefreshLoop()
         }
-        if (s.jellyfinEnabled && s.isActiveWallpaperProviderConfigured && state.jellyfinSlide == null && slideshowJob?.isActive != true) {
+        val needsSlideshowRestart = state.jellyfinSlide == null || state.jellyfinSlide.backdrop.itemId == "cached"
+        if (s.jellyfinEnabled && s.isActiveWallpaperProviderConfigured && needsSlideshowRestart && slideshowJob?.isActive != true) {
           startJellyfinSlideshow(fetchFreshList = cachedBackdrops.isEmpty())
         }
       }
@@ -228,7 +229,8 @@ class LauncherViewModel(
     if (s.weatherEnabled && s.isWeatherConfigured && state.weatherData == null) {
       startWeatherRefreshLoop()
     }
-    if (s.jellyfinEnabled && s.isActiveWallpaperProviderConfigured && state.jellyfinSlide == null) {
+    val needsSlideshowRestart = state.jellyfinSlide == null || state.jellyfinSlide.backdrop.itemId == "cached"
+    if (s.jellyfinEnabled && s.isActiveWallpaperProviderConfigured && needsSlideshowRestart && slideshowJob?.isActive != true) {
       startJellyfinSlideshow(fetchFreshList = cachedBackdrops.isEmpty())
     }
   }
@@ -1085,7 +1087,7 @@ class LauncherViewModel(
     showStatus("Launcher reset to default settings")
   }
 
-  private fun startJellyfinSlideshow(fetchFreshList: Boolean) {
+  private fun startJellyfinSlideshow(fetchFreshList: Boolean, useDiskCache: Boolean = false) {
     slideshowJob?.cancel()
     val settings = _uiState.value.settings
     val provider = settings.activeWallpaperProvider
@@ -1093,8 +1095,8 @@ class LauncherViewModel(
     val client = dataSourceFor(provider)
 
     slideshowJob = viewModelScope.launch {
-      // Instant cold-start wallpaper: paint last cached backdrop from disk immediately while network fetches fresh list
-      if (_uiState.value.jellyfinSlide == null) {
+      // Instant cold-start wallpaper: paint last cached backdrop from disk immediately on boot while network fetches fresh list
+      if (useDiskCache && _uiState.value.jellyfinSlide == null) {
         val cachedImg = appDataSource.loadLastWallpaperCache()
         if (cachedImg != null && _uiState.value.jellyfinSlide == null) {
           _uiState.update {
@@ -1203,6 +1205,9 @@ class LauncherViewModel(
           delay(if (consecutiveMisses >= cachedBackdrops.size) 10_000L else 250L)
         }
         currentBackdropIndex = (currentBackdropIndex + 1) % cachedBackdrops.size
+        if (currentBackdropIndex == 0 && cachedBackdrops.size > 1) {
+          cachedBackdrops = cachedBackdrops.shuffled()
+        }
       }
     }
   }
